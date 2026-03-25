@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'framer-motion'
 import { useNavigate, Link } from 'react-router-dom'
+import { Shield, Users } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
 import { createUser } from '../../lib/repositories/user.repository'
 import { useState } from 'react'
@@ -12,6 +13,7 @@ const registerSchema = z.object({
   email: z.string().email('Ingresa un email valido'),
   password: z.string().min(6, 'Minimo 6 caracteres'),
   confirmPassword: z.string().min(1, 'Confirma tu contraseña'),
+  role: z.enum(['admin', 'employee']),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Las contraseñas no coinciden',
   path: ['confirmPassword'],
@@ -28,10 +30,15 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
+    defaultValues: { role: 'admin' },
   })
+
+  const selectedRole = watch('role')
 
   const onSubmit = async (data: RegisterForm) => {
     setIsLoading(true)
@@ -41,12 +48,13 @@ export default function RegisterPage() {
         name: data.name,
         email: data.email,
         password: data.password,
-        role: 'employee',
+        role: data.role,
       })
 
       // Auto-login after registration
       await login(data.email, data.password)
-      navigate('/employee/checklist', { replace: true })
+      const dest = data.role === 'admin' ? '/admin/dashboard' : '/employee/checklist'
+      navigate(dest, { replace: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al crear cuenta'
       setError(msg)
@@ -148,6 +156,49 @@ export default function RegisterPage() {
             {errors.confirmPassword && (
               <p className="text-rosa text-xs mt-1">{errors.confirmPassword.message}</p>
             )}
+          </div>
+
+          {/* Role selector */}
+          <div>
+            <label className="block text-sm font-medium text-blanco/80 mb-2">
+              Tipo de cuenta
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setValue('role', 'admin')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                  selectedRole === 'admin'
+                    ? 'border-amarillo bg-amarillo/10'
+                    : 'border-blanco/20 bg-blanco/5 hover:border-blanco/40'
+                }`}
+              >
+                <Shield size={24} className={selectedRole === 'admin' ? 'text-amarillo' : 'text-blanco/40'} />
+                <span className={`text-sm font-semibold ${selectedRole === 'admin' ? 'text-amarillo' : 'text-blanco/60'}`}>
+                  Administrador
+                </span>
+                <span className="text-[10px] text-blanco/40 text-center leading-tight">
+                  Dueno del negocio que asigna tareas
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setValue('role', 'employee')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                  selectedRole === 'employee'
+                    ? 'border-amarillo bg-amarillo/10'
+                    : 'border-blanco/20 bg-blanco/5 hover:border-blanco/40'
+                }`}
+              >
+                <Users size={24} className={selectedRole === 'employee' ? 'text-amarillo' : 'text-blanco/40'} />
+                <span className={`text-sm font-semibold ${selectedRole === 'employee' ? 'text-amarillo' : 'text-blanco/60'}`}>
+                  Empleado
+                </span>
+                <span className="text-[10px] text-blanco/40 text-center leading-tight">
+                  Recibe y completa tareas asignadas
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Error message */}
