@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const resend = new Resend(apiKey)
 
-    await resend.emails.send({
+    const { data, error: sendError } = await resend.emails.send({
       from: 'MyDELEGA <onboarding@resend.dev>',
       to: email,
       subject: 'Bienvenido a MyDELEGA',
@@ -89,7 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `.trim(),
     })
 
-    return res.status(200).json({ success: true })
+    if (sendError) {
+      return res.status(400).json({ error: sendError.message ?? 'Resend error', detail: JSON.stringify(sendError) })
+    }
+
+    return res.status(200).json({ success: true, id: data?.id })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return res.status(500).json({ error: message })

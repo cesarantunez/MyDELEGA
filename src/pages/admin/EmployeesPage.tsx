@@ -46,6 +46,7 @@ interface InviteResult {
   email: string
   password: string
   emailSent: boolean
+  errorDetail?: string
 }
 
 export default function EmployeesPage() {
@@ -64,7 +65,7 @@ export default function EmployeesPage() {
 
   useEffect(() => { loadUsers() }, [])
 
-  const sendInviteEmail = async (name: string, email: string, password: string, role: string): Promise<boolean> => {
+  const sendInviteEmail = async (name: string, email: string, password: string, role: string): Promise<{ ok: boolean; error?: string }> => {
     try {
       const appUrl = window.location.origin
       const res = await fetch('/api/send-invite', {
@@ -72,9 +73,13 @@ export default function EmployeesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, role, appUrl }),
       })
-      return res.ok
-    } catch {
-      return false
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        return { ok: false, error: body.error || body.detail || `HTTP ${res.status}` }
+      }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Error de red' }
     }
   }
 
@@ -88,7 +93,7 @@ export default function EmployeesPage() {
     })
 
     // Try to send invite email
-    const emailSent = await sendInviteEmail(data.name, data.email, data.password, data.role)
+    const result = await sendInviteEmail(data.name, data.email, data.password, data.role)
 
     hapticSuccess()
     setShowForm(false)
@@ -96,7 +101,8 @@ export default function EmployeesPage() {
       name: data.name,
       email: data.email,
       password: data.password,
-      emailSent,
+      emailSent: result.ok,
+      errorDetail: result.error,
     })
     reset()
     setAvatarPreview(null)
@@ -225,11 +231,16 @@ export default function EmployeesPage() {
               <h3 className="text-lg font-bold text-blanco mb-1">
                 {inviteResult.emailSent ? 'Invitacion enviada!' : 'Empleado creado'}
               </h3>
-              <p className="text-blanco/50 text-sm mb-4">
+              <p className="text-blanco/50 text-sm mb-2">
                 {inviteResult.emailSent
                   ? `Se envio un email a ${inviteResult.email} con las credenciales y enlace de acceso.`
                   : 'No se pudo enviar el email. Comparte las credenciales manualmente:'}
               </p>
+              {!inviteResult.emailSent && inviteResult.errorDetail && (
+                <p className="text-rojo/70 text-xs mb-4 bg-rojo/10 rounded-lg px-3 py-2">
+                  Error: {inviteResult.errorDetail}
+                </p>
+              )}
 
               {/* Credentials card */}
               <div className="bg-blanco/5 border border-blanco/10 rounded-xl p-4 text-left mb-4">
