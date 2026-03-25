@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth.store'
 import LoginPage from '../pages/auth/LoginPage'
+import RegisterPage from '../pages/auth/RegisterPage'
 import JoinPage from '../pages/auth/JoinPage'
 import AdminLayout from '../components/admin/AdminLayout'
 import AdminDashboard from '../pages/admin/AdminDashboard'
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
     element: <GuestOnly />,
     children: [
       { path: '/login', element: <LoginPage /> },
+      { path: '/register', element: <RegisterPage /> },
     ],
   },
   // Join route (always accessible, even if logged in)
