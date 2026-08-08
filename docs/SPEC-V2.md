@@ -1,6 +1,6 @@
 # MyDELEGA V2 — SPEC maestra
 
-> **Estado:** BORRADOR — pendiente de aprobación por Cesar antes de escribir código (gate de Etapa 1 del Build Pipeline).
+> **Estado:** FIRMADA por Cesar (2026-08-08, voz) — incluye anexo UX "El Panal". Fase 0 en ejecución.
 > **Fecha:** 2026-08-08
 > **Basada en:** auditoría completa del código V1 (2026-08-08) + brief de Cesar (voz, 2026-08-08).
 
@@ -77,6 +77,18 @@ Lo que ya existe, movido a Supabase: tareas con prioridad/estado/vencimiento, ch
 - **Checklists de conocimiento por puesto** ("sabe hacer arqueo de caja", "conoce protocolo de cuarto frío"): el admin/supervisor marca lo verificado en persona; queda historial de quién validó y cuándo.
 - **Quizzes generados por el agente** a partir del material del área, con calificación automática (opcional por módulo).
 - Progreso visible: % de capacitación por empleado y por área.
+
+### M5.1 — UX "El Panal" (asignaciones y capacitación) — *anexo firmado 2026-08-08*
+
+La cara visual de las asignaciones y la capacitación es un **panal de tarjetas hexagonales**, dinámico y con personalidad:
+
+- **Panal por área/empleado:** las tareas asignadas y los módulos de capacitación se muestran como **celdas hexagonales** en una cuadrícula de panal, no como lista plana. Cada celda es una tarjetita con icono, título corto y color por estado: amarillo miel = pendiente, azul = en curso, verde = completada, rojo = vencida.
+- **Enjambre al asignar:** cuando llega una asignación nueva, la celda **entra volando y se acomoda** en el panal (animación staggered con framer-motion, que ya está en el stack). Con push + Realtime, el empleado ve su panal llenarse en vivo.
+- **Tarjetas didácticas (flashcards):** en capacitación, cada celda se **voltea** (flip 3D): frente = concepto/pregunta con icono; reverso = explicación o respuesta. Los quizzes del agente se juegan como mazo de flashcards, una por una, con feedback inmediato y confeti al aprobar.
+- **El panal cuenta la historia del progreso:** las celdas completadas se "llenan de miel" (fondo sólido); el % de avance del empleado o del área se lee de un vistazo viendo cuánto panal está lleno.
+- **Microinteracciones:** haptics al completar (ya existe `haptic.ts` en V1), pop suave al tocar, badge de racha por días consecutivos completando a tiempo.
+- **Dónde aplica:** dashboard del empleado (su panal de tareas del día), vista de capacitación (panal de módulos por área), y vista admin por área (un panal por área para ver cumplimiento de un vistazo).
+- **Componente reutilizable:** `HoneycombGrid` + `HexCard` en `components/ui/` — un solo componente para tareas, capacitación y quizzes.
 
 ### M6 — Evaluación de desempeño
 Evaluaciones periódicas (mensual/trimestral, configurable) por empleado, con dimensiones estándar de la industria + pesos ajustables por vertical:
