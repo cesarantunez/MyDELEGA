@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { UserPlus, X, Mail, Copy, CheckCircle2, Link2, Users2, ClipboardCheck } from 'lucide-react'
+import { UserPlus, X, Mail, Copy, CheckCircle2, Link2, Users2, ClipboardCheck, Trash2, MessageCircle, AlertTriangle } from 'lucide-react'
 import PerformanceTab from '../../components/admin/PerformanceTab'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -59,6 +59,9 @@ export default function EmployeesPage() {
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
@@ -120,6 +123,39 @@ export default function EmployeesPage() {
   const handleToggleActive = async (id: string) => {
     await toggleUserActive(id)
     loadUsers()
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    setDeleteMsg(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sin sesion activa')
+      const res = await fetch('/api/member-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ user_id: deleteTarget.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body?.error?.message || `Error HTTP ${res.status}`)
+      hapticSuccess()
+      setDeleteMsg(
+        body.result === 'deleted'
+          ? `${body.name} fue eliminado(a) del equipo.`
+          : `${body.name} fue retirado(a): su historial se conserva y ya no puede entrar.`
+      )
+      setDeleteTarget(null)
+      loadUsers()
+    } catch (err) {
+      setDeleteMsg(`No se pudo: ${err instanceof Error ? err.message : 'error desconocido'}`)
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }))
@@ -263,22 +299,86 @@ export default function EmployeesPage() {
                 </p>
               )}
 
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <Button
-                  variant="secondary"
-                  className="flex-1"
+                  className="w-full bg-[#25D366] hover:bg-[#1faf55] text-blanco"
                   onClick={() => {
                     const text = `Hola ${inviteResult.name}! Te invite a MyDELEGA. Activa tu cuenta aqui (enlace personal, de un solo uso): ${inviteResult.inviteLink}`
-                    navigator.clipboard.writeText(text)
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
+                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener')
                   }}
                 >
-                  {copied ? <CheckCircle2 size={16} className="mr-1" /> : <Copy size={16} className="mr-1" />}
-                  {copied ? 'Copiado' : 'Copiar enlace'}
+                  <MessageCircle size={16} className="mr-1" />
+                  Enviar por WhatsApp
                 </Button>
-                <Button className="flex-1" onClick={() => { setInviteResult(null); setCopied(false) }}>
-                  Listo
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => {
+                      const text = `Hola ${inviteResult.name}! Te invite a MyDELEGA. Activa tu cuenta aqui (enlace personal, de un solo uso): ${inviteResult.inviteLink}`
+                      navigator.clipboard.writeText(text)
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 2000)
+                    }}
+                  >
+                    {copied ? <CheckCircle2 size={16} className="mr-1" /> : <Copy size={16} className="mr-1" />}
+                    {copied ? 'Copiado' : 'Copiar enlace'}
+                  </Button>
+                  <Button className="flex-1" onClick={() => { setInviteResult(null); setCopied(false) }}>
+                    Listo
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Aviso de resultado de eliminacion */}
+      {deleteMsg && (
+        <div className="bg-blanco/5 border border-blanco/10 rounded-xl px-4 py-3 flex items-start justify-between gap-2">
+          <p className="text-blanco/70 text-xs">{deleteMsg}</p>
+          <button onClick={() => setDeleteMsg(null)} className="text-blanco/30 hover:text-blanco">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Confirmar eliminacion */}
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDeleteTarget(null)}
+          >
+            <motion.div
+              className="bg-oscuro border border-blanco/10 rounded-2xl p-6 w-full max-w-sm text-center"
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 50, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4 bg-rojo/20">
+                <AlertTriangle size={28} className="text-rojo" />
+              </div>
+              <h3 className="text-lg font-bold text-blanco mb-1">Quitar a {deleteTarget.name}?</h3>
+              <p className="text-blanco/50 text-sm mb-5">
+                Perdera el acceso a la app. Si tiene tareas o evaluaciones, su
+                historial se conserva; si no tiene nada, se elimina por completo.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => setDeleteTarget(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-rojo hover:bg-rojo/80 text-blanco"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                >
+                  {deleting ? 'Quitando...' : 'Si, quitar'}
                 </Button>
               </div>
             </motion.div>
@@ -321,6 +421,15 @@ export default function EmployeesPage() {
                   className={`w-2.5 h-2.5 rounded-full ${user.active ? 'bg-amarillo' : 'bg-blanco/20'}`}
                   title={user.active ? 'Activo' : 'Inactivo'}
                 />
+                {user.role !== 'admin' && (
+                  <button
+                    onClick={() => setDeleteTarget(user)}
+                    className="text-blanco/25 hover:text-rojo transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                    title="Quitar del equipo"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             </Card>
           </motion.div>

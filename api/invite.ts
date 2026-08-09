@@ -149,7 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const resend = new Resend(resendKey)
         const { error: sendError } = await resend.emails.send({
-          from: 'MyDELEGA <onboarding@resend.dev>',
+          from: 'MyDELEGA <mydelega@krealabs.tech>',
           to: email,
           subject: `${callerProfile.name} te invito a MyDELEGA`,
           html: `
