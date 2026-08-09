@@ -28,6 +28,17 @@ interface Bubble extends ChatMessage {
   tool?: string | null
 }
 
+/** Renderiza **negritas** del asistente sin traer un parser de markdown. */
+function richText(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} className="text-blanco font-semibold">{part.slice(2, -2)}</strong>
+    ) : (
+      part
+    )
+  )
+}
+
 export default function AgentChat() {
   const user = useAuthStore((s) => s.user)
   const [open, setOpen] = useState(false)
@@ -184,7 +195,7 @@ export default function AgentChat() {
                         : 'max-w-[92%] text-blanco/90 text-sm whitespace-pre-wrap leading-relaxed'
                     }
                   >
-                    {b.content}
+                    {b.role === 'assistant' ? richText(b.content) : b.content}
                     {b.tool && (
                       <span className="flex items-center gap-2 text-amarillo/80 text-xs mt-1">
                         <Loader2 size={12} className="animate-spin" /> {b.tool}
