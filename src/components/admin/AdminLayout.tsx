@@ -1,13 +1,15 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth.store'
-import { LayoutDashboard, Users, PlusCircle, ClipboardList, CheckSquare, BarChart3, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, PlusCircle, ClipboardList, CheckSquare, BarChart3, LogOut, CalendarClock } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
+import PushBanner from '../pwa/PushBanner'
 
 const navItems = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/admin/tasks', icon: ClipboardList, label: 'Tareas' },
   { to: '/admin/tasks/new', icon: PlusCircle, label: 'Nueva' },
+  { to: '/admin/products', icon: CalendarClock, label: 'Vencim.' },
   { to: '/admin/checklist', icon: CheckSquare, label: 'Checklist' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reportes' },
   { to: '/admin/employees', icon: Users, label: 'Equipo' },
@@ -37,6 +39,8 @@ export default function AdminLayout() {
           </button>
         </div>
       </header>
+
+      <PushBanner />
 
       {/* Content */}
       <main className="flex-1 p-4 pb-20 max-w-3xl mx-auto w-full">

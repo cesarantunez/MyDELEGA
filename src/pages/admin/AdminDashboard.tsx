@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { ClipboardList, CheckCircle, AlertTriangle, Users, PlusCircle, BarChart3 } from 'lucide-react'
+import { ClipboardList, CheckCircle, AlertTriangle, Users, PlusCircle, BarChart3, CalendarClock, ArrowRight } from 'lucide-react'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { getTaskStats, getComplianceByArea, type TaskStats, type AreaCompliance } from '../../lib/repositories/task.repository'
 import { getActiveEmployeeCount } from '../../lib/repositories/user.repository'
+import { getExpiringSoon, daysUntilExpiry, type ProductRow } from '../../lib/repositories/product.repository'
 
 const AREA_COLORS = ['#FFE000', '#FF1F8E', '#1B4FD8', '#E31E24', '#FFFFFF', '#9CA3AF']
 
@@ -20,11 +21,13 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<TaskStats>({ active: 0, completed_today: 0, overdue: 0 })
   const [compliance, setCompliance] = useState<AreaCompliance[]>([])
   const [employeeCount, setEmployeeCount] = useState(0)
+  const [expiring, setExpiring] = useState<ProductRow[]>([])
 
   useEffect(() => {
     getTaskStats().then(setStats).catch(console.error)
     getComplianceByArea().then(setCompliance).catch(console.error)
     getActiveEmployeeCount().then(setEmployeeCount).catch(console.error)
+    getExpiringSoon(5).then(setExpiring).catch(console.error)
   }, [])
 
   const statCards = [
@@ -114,6 +117,41 @@ export default function AdminDashboard() {
           )}
         </Card>
       </motion.div>
+
+      {/* Por vencer */}
+      {expiring.length > 0 && (
+        <motion.div {...fadeUp} transition={{ delay: 0.45 }}>
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-blanco flex items-center gap-2">
+                <CalendarClock size={16} className="text-rojo" />
+                Por vencer
+              </h3>
+              <button
+                onClick={() => navigate('/admin/products')}
+                className="text-xs text-blanco/40 hover:text-blanco flex items-center gap-1"
+              >
+                Ver todos <ArrowRight size={12} />
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {expiring.map((p) => {
+                const daysLeft = daysUntilExpiry(p.expiry_date)
+                const critical = daysLeft <= 3
+                return (
+                  <div key={p.id} className="flex items-center gap-2 text-xs">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${critical ? 'bg-rojo' : 'bg-amarillo'}`} />
+                    <span className="text-blanco/70 flex-1 truncate">{p.name} · {p.area}</span>
+                    <span className={`font-bold flex-shrink-0 ${critical ? 'text-rojo' : 'text-amarillo'}`}>
+                      {daysLeft < 0 ? 'VENCIDO' : daysLeft === 0 ? 'HOY' : `${daysLeft}d`}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Quick actions */}
       <motion.div {...fadeUp} transition={{ delay: 0.5 }}>

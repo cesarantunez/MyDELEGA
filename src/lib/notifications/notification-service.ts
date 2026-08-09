@@ -1,9 +1,34 @@
 import { supabase } from '../supabase'
 
 // ══════════════════════════════════════════════════════════════
-// Notificaciones in-app (tabla notifications, con RLS).
-// Las push reales server-side llegan en Fase 2 (web-push + VAPID).
+// Notificaciones: in-app (tabla notifications, RLS) + push real
+// al teléfono vía /api/push-send (web-push + VAPID, best-effort).
 // ══════════════════════════════════════════════════════════════
+
+interface PushMessage {
+  title: string
+  body: string
+  url?: string
+  tag?: string
+}
+
+/** Push real al teléfono. Best-effort: si falla, la notificación in-app ya quedó. */
+export async function sendPushToUsers(userIds: string[], message: PushMessage): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    await fetch('/api/push-send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ user_ids: userIds, ...message }),
+    })
+  } catch {
+    // Silencioso: el push es refuerzo, no fuente de verdad
+  }
+}
 
 export async function notifyTaskAssigned(
   businessId: string,
@@ -18,6 +43,12 @@ export async function notifyTaskAssigned(
     body: taskTitle,
     type: 'task_assigned',
     reference_id: taskId,
+  })
+  void sendPushToUsers([userId], {
+    title: 'Nueva tarea asignada',
+    body: taskTitle,
+    url: '/employee/tasks',
+    tag: `task-${taskId}`,
   })
 }
 
@@ -35,6 +66,12 @@ export async function notifyTaskCompleted(
     body: `${employeeName} completo: ${taskTitle}`,
     type: 'task_completed',
     reference_id: taskId,
+  })
+  void sendPushToUsers([adminId], {
+    title: 'Tarea completada',
+    body: `${employeeName} completo: ${taskTitle}`,
+    url: '/admin/tasks',
+    tag: `task-${taskId}`,
   })
 }
 

@@ -11,6 +11,7 @@ import CreateTaskPage from '../pages/admin/CreateTaskPage'
 import TaskTrackingPage from '../pages/admin/TaskTrackingPage'
 import WeeklyChecklistPage from '../pages/admin/WeeklyChecklistPage'
 import ReportsPage from '../pages/admin/ReportsPage'
+import ProductsPage from '../pages/admin/ProductsPage'
 import EmployeeLayout from '../components/employee/EmployeeLayout'
 import EmployeeDashboard from '../pages/employee/EmployeeDashboard'
 import MyTasksPage from '../pages/employee/MyTasksPage'
@@ -94,6 +95,7 @@ export const router = createBrowserRouter([
               { path: '/admin/employees', element: <EmployeesPage /> },
               { path: '/admin/tasks/new', element: <CreateTaskPage /> },
               { path: '/admin/tasks', element: <TaskTrackingPage /> },
+              { path: '/admin/products', element: <ProductsPage /> },
               { path: '/admin/checklist', element: <WeeklyChecklistPage /> },
               { path: '/admin/reports', element: <ReportsPage /> },
             ],

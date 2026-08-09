@@ -3,6 +3,7 @@ import { useAuthStore } from '../../stores/auth.store'
 import { Home, ClipboardList, CheckSquare, User, LogOut } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
+import PushBanner from '../pwa/PushBanner'
 
 const navItems = [
   { to: '/employee/dashboard', icon: Home, label: 'Inicio' },
@@ -53,6 +54,8 @@ export default function EmployeeLayout() {
           </button>
         </div>
       </header>
+
+      <PushBanner />
 
       {/* Content */}
       <main className="flex-1 p-4 pb-20 max-w-lg mx-auto w-full">

@@ -1,5 +1,8 @@
 {
   "rewrites": [
-    { "source": "/((?!assets|pwa-|api).*)", "destination": "/index.html" }
+    { "source": "/((?!assets|pwa-|api|sw.js|workbox-).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/expiry-check", "schedule": "0 12 * * *" }
   ]
 }

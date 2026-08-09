@@ -11,6 +11,7 @@ import {
   type WeeklyHistory,
   type NotificationRow,
 } from '../../lib/repositories/employee-task.repository'
+import { enablePush, disablePush, isPushEnabled } from '../../lib/push'
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user)
@@ -23,20 +24,19 @@ export default function ProfilePage() {
     if (!user) return
     getMyWeeklyHistory(user.id, 4).then(setHistory).catch(console.error)
     getMyNotifications(user.id).then(setNotifications).catch(console.error)
-    // Check if notifications are allowed in this browser
-    if ('Notification' in window) {
-      setNotifEnabled(Notification.permission === 'granted')
-    }
+    // Estado real: permiso + suscripción push registrada en este dispositivo
+    isPushEnabled().then(setNotifEnabled).catch(() => setNotifEnabled(false))
   }, [user])
 
   const handleToggleNotifications = async () => {
-    if (!('Notification' in window)) return
-    if (Notification.permission === 'granted') {
+    if (!user) return
+    if (notifEnabled) {
+      await disablePush()
       setNotifEnabled(false)
-      return
+    } else {
+      const ok = await enablePush(user.id)
+      setNotifEnabled(ok)
     }
-    const result = await Notification.requestPermission()
-    setNotifEnabled(result === 'granted')
   }
 
   const handleMarkAllRead = async () => {
