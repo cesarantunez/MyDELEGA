@@ -4,6 +4,7 @@ import { LayoutDashboard, Users, ClipboardList, CheckSquare, BarChart3, LogOut, 
 import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
 import PushBanner from '../pwa/PushBanner'
+import AgentChat from '../shared/AgentChat'
 
 // "Nueva tarea" salió del nav (vive en Dashboard y en el + de Tareas)
 const navItems = [
@@ -47,6 +48,8 @@ export default function AdminLayout() {
       <main className="flex-1 p-4 pb-20 max-w-3xl mx-auto w-full">
         <Outlet />
       </main>
+
+      <AgentChat />
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-oscuro border-t border-blanco/10 px-2 py-1 z-50">
