@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { sendPushToUsers } from './_push'
+import { sendPushToUsers } from './_push.js'
 
 // ══════════════════════════════════════════════════════════════
 // POST /api/push-send — relay de push entre miembros del negocio.

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { sendPushToUsers } from './_push'
+import { sendPushToUsers } from './_push.js'
 
 // ══════════════════════════════════════════════════════════════
 // GET /api/expiry-check — job diario (Vercel Cron, ver vercel.json).
