@@ -133,7 +133,7 @@ export default function AgentChat() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 60 }}
             transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-            className="fixed inset-0 z-50 bg-oscuro flex flex-col"
+            className="fixed inset-0 z-[70] bg-oscuro flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-blanco/10">
