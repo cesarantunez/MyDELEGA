@@ -3,7 +3,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { UserPlus, X, Mail, Copy, CheckCircle2, Link2 } from 'lucide-react'
+import { UserPlus, X, Mail, Copy, CheckCircle2, Link2, Users2, ClipboardCheck } from 'lucide-react'
+import PerformanceTab from '../../components/admin/PerformanceTab'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -51,6 +52,7 @@ interface InviteResult {
 }
 
 export default function EmployeesPage() {
+  const [tab, setTab] = useState<'members' | 'performance'>('members')
   const [users, setUsers] = useState<UserRow[]>([])
   const [areas, setAreas] = useState<AreaOption[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -124,18 +126,46 @@ export default function EmployeesPage() {
   const areaName = (id: string | null) => areas.find((a) => a.id === id)?.name
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-blanco">Equipo</h2>
           <p className="text-blanco/50 text-sm">{users.length} miembro(s)</p>
         </div>
-        <Button onClick={() => setShowForm(true)} size="sm">
-          <UserPlus size={16} />
-          Invitar
-        </Button>
+        {tab === 'members' && (
+          <Button onClick={() => setShowForm(true)} size="sm">
+            <UserPlus size={16} />
+            Invitar
+          </Button>
+        )}
       </div>
+
+      {/* Tabs */}
+      <div className="flex bg-blanco/5 rounded-xl p-1 gap-1">
+        <button
+          onClick={() => setTab('members')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+            tab === 'members' ? 'bg-amarillo text-oscuro' : 'text-blanco/50 hover:text-blanco'
+          }`}
+        >
+          <Users2 size={14} /> Miembros
+        </button>
+        <button
+          onClick={() => setTab('performance')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+            tab === 'performance' ? 'bg-amarillo text-oscuro' : 'text-blanco/50 hover:text-blanco'
+          }`}
+        >
+          <ClipboardCheck size={14} /> Desempeño
+        </button>
+      </div>
+
+      {tab === 'performance' && <PerformanceTab />}
+
+      {tab === 'members' && (
+      <>
+      {/* eslint-disable-next-line -- contenido original de Miembros */}
 
       {/* Invite form modal */}
       <AnimatePresence>
@@ -296,6 +326,8 @@ export default function EmployeesPage() {
           </motion.div>
         ))}
       </div>
+      </>
+      )}
     </div>
   )
 }

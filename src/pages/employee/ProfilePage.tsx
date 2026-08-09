@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Bell, BellOff, ChevronRight, TrendingUp } from 'lucide-react'
+import { Bell, BellOff, ChevronRight, TrendingUp, ClipboardCheck } from 'lucide-react'
 import { Card } from '../../components/ui/card'
 import { useAuthStore } from '../../stores/auth.store'
 import {
@@ -12,6 +12,13 @@ import {
   type NotificationRow,
 } from '../../lib/repositories/employee-task.repository'
 import { enablePush, disablePush, isPushEnabled } from '../../lib/push'
+import {
+  getEvaluationsFor,
+  getEvaluationDetail,
+  type EvaluationRow,
+  type EvaluationDetail,
+} from '../../lib/repositories/evaluation.repository'
+import { DIMENSION_LABELS, scoreColor } from '../../lib/evaluations/dimensions'
 
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user)
@@ -19,11 +26,14 @@ export default function ProfilePage() {
   const [notifications, setNotifications] = useState<NotificationRow[]>([])
   const [notifEnabled, setNotifEnabled] = useState(true)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [myEvaluations, setMyEvaluations] = useState<EvaluationRow[]>([])
+  const [evalDetail, setEvalDetail] = useState<EvaluationDetail | null>(null)
 
   useEffect(() => {
     if (!user) return
     getMyWeeklyHistory(user.id, 4).then(setHistory).catch(console.error)
     getMyNotifications(user.id).then(setNotifications).catch(console.error)
+    getEvaluationsFor(user.id).then(setMyEvaluations).catch(console.error)
     // Estado real: permiso + suscripción push registrada en este dispositivo
     isPushEnabled().then(setNotifEnabled).catch(() => setNotifEnabled(false))
   }, [user])
@@ -122,6 +132,50 @@ export default function ProfilePage() {
           )}
         </Card>
       </motion.div>
+
+      {/* Mis evaluaciones */}
+      {myEvaluations.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ClipboardCheck size={16} className="text-amarillo" />
+              <p className="text-sm font-semibold text-blanco">Mis evaluaciones</p>
+            </div>
+            <div className="space-y-1.5">
+              {myEvaluations.map((ev) => {
+                const avg = Number(ev.average)
+                const isOpen = evalDetail?.id === ev.id
+                return (
+                  <div key={ev.id}>
+                    <button
+                      onClick={async () => setEvalDetail(isOpen ? null : await getEvaluationDetail(ev.id))}
+                      className="w-full flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-blanco/5 transition-colors"
+                    >
+                      <span className="text-sm text-blanco/80 flex-1 text-left">Periodo {ev.period}</span>
+                      <span className={`text-sm font-bold ${scoreColor(avg)}`}>{avg.toFixed(2)}/5</span>
+                      <ChevronRight size={14} className={`text-blanco/30 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                    </button>
+                    {isOpen && evalDetail && (
+                      <div className="pl-3 pb-2 space-y-0.5">
+                        {evalDetail.scores.map((s) => (
+                          <div key={s.dimension} className="flex items-start gap-2 text-xs py-0.5">
+                            <span className={`font-bold w-4 text-center flex-shrink-0 ${scoreColor(s.score)}`}>{s.score}</span>
+                            <span className="text-blanco/60 flex-shrink-0">{DIMENSION_LABELS[s.dimension] ?? s.dimension}</span>
+                            {s.comment && <span className="text-blanco/35 italic truncate">— {s.comment}</span>}
+                          </div>
+                        ))}
+                        {evalDetail.notes && (
+                          <p className="text-[11px] text-blanco/45 pt-1 whitespace-pre-wrap">{evalDetail.notes}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Notifications section */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
