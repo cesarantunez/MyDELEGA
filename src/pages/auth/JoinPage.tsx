@@ -1,76 +1,83 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { CheckCircle2, AlertTriangle, LogIn } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, KeyRound, LogIn } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Button } from '../../components/ui/button'
 import InstallBanner from '../../components/pwa/InstallBanner'
-import { initDatabase } from '../../lib/db/sqlite-client'
-import { runRead, runWrite, persistDatabase } from '../../lib/db/sqlite-client'
+import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../stores/auth.store'
 
-type JoinStatus = 'loading' | 'success' | 'already_exists' | 'error'
+// ══════════════════════════════════════════════════════════════
+// El link de invitacion (generado server-side en /api/invite)
+// abre esta pagina con una sesion temporal en el hash de la URL.
+// El empleado define AQUI su propia contraseña — nunca viaja
+// una contraseña por email.
+// ══════════════════════════════════════════════════════════════
 
-interface InviteData {
-  n: string // name
-  e: string // email
-  h: string // password_hash
-  r: string // role
-}
+const passwordSchema = z.object({
+  password: z.string().min(8, 'Minimo 8 caracteres'),
+  confirmPassword: z.string().min(1, 'Confirma tu contraseña'),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: 'Las contraseñas no coinciden',
+  path: ['confirmPassword'],
+})
+
+type PasswordForm = z.infer<typeof passwordSchema>
+
+type JoinStatus = 'checking' | 'set_password' | 'done' | 'invalid'
 
 export default function JoinPage() {
-  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [status, setStatus] = useState<JoinStatus>('loading')
+  const { refreshProfile } = useAuthStore()
+  const [status, setStatus] = useState<JoinStatus>('checking')
+  const [error, setError] = useState<string | null>(null)
   const [userName, setUserName] = useState('')
 
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<PasswordForm>({ resolver: zodResolver(passwordSchema) })
+
   useEffect(() => {
-    const activate = async () => {
-      const encoded = searchParams.get('d')
-      if (!encoded) {
-        setStatus('error')
+    // supabase-js procesa el token del hash automaticamente (detectSessionInUrl).
+    // Esperamos un momento a que la sesion quede establecida.
+    let attempts = 0
+    const check = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+        setUserName(profile?.name ?? session.user.email ?? '')
+        setStatus('set_password')
         return
       }
-
-      try {
-        // Decode base64url data
-        const json = atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))
-        const data: InviteData = JSON.parse(json)
-
-        if (!data.n || !data.e || !data.h || !data.r) {
-          setStatus('error')
-          return
-        }
-
-        setUserName(data.n)
-
-        // Ensure database is initialized
-        await initDatabase()
-
-        // Check if user already exists
-        const existing = runRead<{ id: number }>('SELECT id FROM users WHERE email = ?', [data.e])
-
-        if (existing.length > 0) {
-          setStatus('already_exists')
-          return
-        }
-
-        // Create user with the hashed password from the invite
-        runWrite(
-          'INSERT INTO users (role, name, email, password_hash, active) VALUES (?, ?, ?, ?, 1)',
-          [data.r, data.n, data.e, data.h]
-        )
-        await persistDatabase()
-
-        // Clear install banner dismissal so it shows fresh
-        localStorage.removeItem('install-banner-dismissed')
-
-        setStatus('success')
-      } catch {
-        setStatus('error')
+      attempts++
+      if (attempts < 10) {
+        setTimeout(check, 300)
+      } else {
+        setStatus('invalid')
       }
     }
+    check()
+  }, [])
 
-    activate()
-  }, [searchParams])
+  const onSubmit = async (data: PasswordForm) => {
+    setError(null)
+    const { error: updateError } = await supabase.auth.updateUser({ password: data.password })
+    if (updateError) {
+      setError(updateError.message)
+      return
+    }
+    await refreshProfile()
+    setStatus('done')
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-azul px-4">
@@ -90,16 +97,82 @@ export default function JoinPage() {
           </h1>
         </div>
 
-        {/* Loading */}
-        {status === 'loading' && (
+        {/* Checking */}
+        {status === 'checking' && (
           <div className="bg-blanco/10 backdrop-blur-sm rounded-2xl p-8">
             <div className="w-10 h-10 border-3 border-amarillo/30 border-t-amarillo rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-blanco/70 text-sm">Activando tu cuenta...</p>
+            <p className="text-blanco/70 text-sm">Verificando tu invitacion...</p>
           </div>
         )}
 
-        {/* Success */}
-        {status === 'success' && (
+        {/* Set password */}
+        {status === 'set_password' && (
+          <motion.form
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onSubmit={handleSubmit(onSubmit)}
+            className="bg-blanco/10 backdrop-blur-sm rounded-2xl p-6 space-y-4 text-left"
+          >
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-full bg-amarillo/20 mx-auto flex items-center justify-center">
+                <KeyRound size={26} className="text-amarillo" />
+              </div>
+              <h2 className="text-lg font-bold text-blanco">
+                Bienvenido{userName ? `, ${userName.split(' ')[0]}` : ''}!
+              </h2>
+              <p className="text-blanco/60 text-xs">
+                Define tu contraseña para activar tu cuenta.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-blanco/80 mb-1">
+                Nueva contraseña
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Minimo 8 caracteres"
+                {...register('password')}
+                className="w-full px-4 py-3 rounded-xl bg-blanco/10 border border-blanco/20 text-blanco placeholder-blanco/40 focus:outline-none focus:border-amarillo focus:ring-1 focus:ring-amarillo transition-colors"
+              />
+              {errors.password && (
+                <p className="text-rosa text-xs mt-1">{errors.password.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-blanco/80 mb-1">
+                Confirmar contraseña
+              </label>
+              <input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repite tu contraseña"
+                {...register('confirmPassword')}
+                className="w-full px-4 py-3 rounded-xl bg-blanco/10 border border-blanco/20 text-blanco placeholder-blanco/40 focus:outline-none focus:border-amarillo focus:ring-1 focus:ring-amarillo transition-colors"
+              />
+              {errors.confirmPassword && (
+                <p className="text-rosa text-xs mt-1">{errors.confirmPassword.message}</p>
+              )}
+            </div>
+
+            {error && (
+              <div className="bg-rojo/20 border border-rojo/40 rounded-xl px-4 py-3">
+                <p className="text-rojo text-sm text-center">{error}</p>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Guardando...' : 'Activar mi cuenta'}
+            </Button>
+          </motion.form>
+        )}
+
+        {/* Done */}
+        {status === 'done' && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -111,46 +184,18 @@ export default function JoinPage() {
             <div>
               <h2 className="text-xl font-bold text-blanco">Cuenta activada!</h2>
               <p className="text-blanco/60 text-sm mt-2">
-                Bienvenido <strong className="text-amarillo">{userName}</strong>. Tu cuenta esta lista.
-              </p>
-              <p className="text-blanco/40 text-xs mt-4">
-                Usa las credenciales que recibiste por email para iniciar sesion.
+                Tu cuenta esta lista. Instala la app en tu telefono y entra con tu correo y tu nueva contraseña.
               </p>
             </div>
-
-            <Button onClick={() => navigate('/login')} className="w-full">
+            <Button onClick={() => navigate('/employee/checklist')} className="w-full">
               <LogIn size={16} className="mr-2" />
-              Ir al login
+              Entrar
             </Button>
           </motion.div>
         )}
 
-        {/* Already exists */}
-        {status === 'already_exists' && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-blanco/10 backdrop-blur-sm rounded-2xl p-8 space-y-6"
-          >
-            <div className="w-16 h-16 rounded-full bg-amarillo/20 mx-auto flex items-center justify-center">
-              <CheckCircle2 size={36} className="text-amarillo" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-blanco">Ya tienes cuenta</h2>
-              <p className="text-blanco/60 text-sm mt-2">
-                Tu cuenta ya esta configurada en este dispositivo, <strong className="text-amarillo">{userName}</strong>.
-              </p>
-            </div>
-
-            <Button onClick={() => navigate('/login')} className="w-full">
-              <LogIn size={16} className="mr-2" />
-              Ir al login
-            </Button>
-          </motion.div>
-        )}
-
-        {/* Error */}
-        {status === 'error' && (
+        {/* Invalid */}
+        {status === 'invalid' && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -162,10 +207,9 @@ export default function JoinPage() {
             <div>
               <h2 className="text-xl font-bold text-blanco">Enlace invalido</h2>
               <p className="text-blanco/60 text-sm mt-2">
-                El enlace de invitacion no es valido o ha expirado. Contacta a tu administrador.
+                El enlace de invitacion no es valido o ya expiro. Pide a tu administrador que te envie uno nuevo.
               </p>
             </div>
-
             <Button onClick={() => navigate('/login')} variant="secondary" className="w-full">
               Ir al login
             </Button>
@@ -173,12 +217,11 @@ export default function JoinPage() {
         )}
 
         <p className="text-blanco/20 text-xs mt-6">
-          MyDELEGA v0.1.0 — Gestion operativa
+          MyDELEGA v2 — Gestion operativa
         </p>
       </motion.div>
 
-      {/* Install banner - forced on this page */}
-      {(status === 'success' || status === 'already_exists') && <InstallBanner />}
+      {(status === 'done') && <InstallBanner />}
     </div>
   )
 }

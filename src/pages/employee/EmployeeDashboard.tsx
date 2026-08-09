@@ -30,20 +30,23 @@ export default function EmployeeDashboard() {
 
   useEffect(() => {
     if (!user) return
-    setStats(getMyStats(user.id))
-    setUnreadCount(getMyUnreadCount(user.id))
+    getMyStats(user.id).then(setStats).catch(console.error)
+    getMyUnreadCount(user.id).then(setUnreadCount).catch(console.error)
     // Get tasks due soon for quick preview
-    const myTasks = getMyTasks(user.id, {})
-    setUrgentTasks(
-      myTasks
-        .filter((t) => {
-          if (t.status === 'completed' || t.status === 'cancelled') return false
-          if (!t.due_date) return false
-          const diff = new Date(t.due_date).getTime() - Date.now()
-          return diff > 0 && diff < 24 * 60 * 60 * 1000
-        })
-        .slice(0, 3)
-    )
+    getMyTasks(user.id, {})
+      .then((myTasks) => {
+        setUrgentTasks(
+          myTasks
+            .filter((t) => {
+              if (t.status === 'completed' || t.status === 'cancelled') return false
+              if (!t.due_date) return false
+              const diff = new Date(t.due_date).getTime() - Date.now()
+              return diff > 0 && diff < 24 * 60 * 60 * 1000
+            })
+            .slice(0, 3)
+        )
+      })
+      .catch(console.error)
   }, [user])
 
   const greeting = () => {

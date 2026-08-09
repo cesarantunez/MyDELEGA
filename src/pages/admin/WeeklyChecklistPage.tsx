@@ -37,13 +37,13 @@ export default function WeeklyChecklistPage() {
 
   useEffect(() => {
     handleGenerate()
-    setHistory(getWeeklyReportHistory())
+    getWeeklyReportHistory().then(setHistory).catch(console.error)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleGenerate = () => {
     const bounds = getWeekBoundsForOffset(selectedWeek)
-    const data = generateWeeklyReport(bounds.start, bounds.end)
-    setReport(data)
+    generateWeeklyReport(bounds.start, bounds.end).then(setReport).catch(console.error)
   }
 
   const handleSaveAndExport = async () => {
@@ -51,7 +51,7 @@ export default function WeeklyChecklistPage() {
     setIsGenerating(true)
 
     await saveWeeklyReport(report, user.id)
-    setHistory(getWeeklyReportHistory())
+    getWeeklyReportHistory().then(setHistory).catch(console.error)
     generateWeeklyReportPDF(report)
 
     setIsGenerating(false)
@@ -71,8 +71,7 @@ export default function WeeklyChecklistPage() {
   const handleWeekChange = (offset: number) => {
     setSelectedWeek(offset)
     const bounds = getWeekBoundsForOffset(offset)
-    const data = generateWeeklyReport(bounds.start, bounds.end)
-    setReport(data)
+    generateWeeklyReport(bounds.start, bounds.end).then(setReport).catch(console.error)
   }
 
   return (

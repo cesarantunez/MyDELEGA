@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -6,7 +6,7 @@ import { X, Camera, Image, CheckCircle2, Play, AlertTriangle } from 'lucide-reac
 import { Card } from '../ui/card'
 import { Badge, statusLabels, priorityLabels } from '../ui/badge'
 import { Button } from '../ui/button'
-import type { TaskRow } from '../../lib/repositories/task.repository'
+import { getEvidenceUrl, type TaskRow } from '../../lib/repositories/task.repository'
 import {
   completeMyTask,
   startMyTask,
@@ -16,7 +16,7 @@ import { hapticMedium, hapticSuccess } from '../../lib/haptic'
 
 interface TaskDetailModalProps {
   task: TaskRow
-  userId: number
+  userId: string
   onClose: () => void
   onTaskUpdated: () => void
 }
@@ -27,8 +27,17 @@ export default function TaskDetailModal({ task: initialTask, userId, onClose, on
   const [task, setTask] = useState(initialTask)
   const [step, setStep] = useState<ModalStep>('detail')
   const [evidencePreview, setEvidencePreview] = useState<string | null>(null)
+  const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (task.evidence_path && task.status === 'completed') {
+      getEvidenceUrl(task.evidence_path).then(setEvidenceUrl).catch(() => setEvidenceUrl(null))
+    } else {
+      setEvidenceUrl(null)
+    }
+  }, [task.evidence_path, task.status])
 
   const isOverdue = (() => {
     if (task.status === 'completed' || task.status === 'cancelled') return false
@@ -46,7 +55,7 @@ export default function TaskDetailModal({ task: initialTask, userId, onClose, on
     hapticMedium()
     setIsSubmitting(true)
     await startMyTask(userId, task.id)
-    const updated = getMyTaskById(userId, task.id)
+    const updated = await getMyTaskById(userId, task.id)
     if (updated) setTask(updated)
     setIsSubmitting(false)
   }
@@ -171,11 +180,11 @@ export default function TaskDetailModal({ task: initialTask, userId, onClose, on
               )}
 
               {/* Evidence preview if already completed with evidence */}
-              {task.evidence_base64 && task.status === 'completed' && (
+              {evidenceUrl && task.status === 'completed' && (
                 <div>
                   <p className="text-xs text-blanco/40 mb-2">Evidencia adjunta</p>
                   <img
-                    src={task.evidence_base64}
+                    src={evidenceUrl}
                     alt="Evidencia"
                     className="w-full rounded-xl border border-blanco/10"
                   />

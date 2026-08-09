@@ -1,77 +1,83 @@
-import bcrypt from 'bcryptjs'
-import { runRead, runWrite, persistDatabase } from '../db/sqlite-client'
+import { supabase } from '../supabase'
+
+// Perfiles del negocio (la autenticacion vive en Supabase Auth;
+// aqui solo se lee/gestiona el directorio del equipo).
 
 export interface UserRow {
-  id: number
-  role: 'admin' | 'employee'
+  id: string
+  role: 'admin' | 'supervisor' | 'employee'
   name: string
   email: string
-  pin: string | null
-  password_hash: string | null
+  area_id: string | null
   avatar_url: string | null
+  /** 1 activo / 0 inactivo (compatibilidad con la UI V1) */
   active: number
   created_at: string
 }
 
-export interface CreateUserInput {
+interface ProfileRow {
+  user_id: string
+  role: 'admin' | 'supervisor' | 'employee'
   name: string
-  email: string
-  password: string
-  role: 'admin' | 'employee'
-  area?: string
-  avatar_url?: string | null
+  email: string | null
+  area_id: string | null
+  avatar_url: string | null
+  active: boolean
+  created_at: string
 }
 
-export function getAllUsers(): UserRow[] {
-  return runRead<UserRow>('SELECT * FROM users ORDER BY name')
+function mapProfile(row: ProfileRow): UserRow {
+  return {
+    id: row.user_id,
+    role: row.role,
+    name: row.name,
+    email: row.email ?? '',
+    area_id: row.area_id,
+    avatar_url: row.avatar_url,
+    active: row.active ? 1 : 0,
+    created_at: row.created_at,
+  }
 }
 
-export function getActiveUsers(): UserRow[] {
-  return runRead<UserRow>('SELECT * FROM users WHERE active = 1 ORDER BY name')
+export async function getAllUsers(): Promise<UserRow[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('name')
+  if (error) throw new Error(error.message)
+  return (data as ProfileRow[]).map(mapProfile)
 }
 
-export function getUsersByRole(role: 'admin' | 'employee'): UserRow[] {
-  return runRead<UserRow>('SELECT * FROM users WHERE role = ? AND active = 1 ORDER BY name', [role])
+export async function getActiveUsers(): Promise<UserRow[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('active', true)
+    .order('name')
+  if (error) throw new Error(error.message)
+  return (data as ProfileRow[]).map(mapProfile)
 }
 
-export function getUserById(id: number): UserRow | null {
-  const rows = runRead<UserRow>('SELECT * FROM users WHERE id = ?', [id])
-  return rows[0] ?? null
+export async function getActiveEmployeeCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('profiles')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('role', 'employee')
+    .eq('active', true)
+  if (error) throw new Error(error.message)
+  return count ?? 0
 }
 
-export function getActiveEmployeeCount(): number {
-  const rows = runRead<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE role = ? AND active = 1', ['employee'])
-  return rows[0]?.count ?? 0
-}
-
-export async function createUser(input: CreateUserInput): Promise<number> {
-  const hash = await bcrypt.hash(input.password, 10)
-  runWrite(
-    'INSERT INTO users (role, name, email, password_hash, avatar_url, active) VALUES (?, ?, ?, ?, ?, 1)',
-    [input.role, input.name, input.email, hash, input.avatar_url ?? null]
-  )
-  await persistDatabase()
-  const rows = runRead<{ id: number }>('SELECT last_insert_rowid() as id')
-  return rows[0].id
-}
-
-export async function updateUser(id: number, data: Partial<Pick<UserRow, 'name' | 'email' | 'avatar_url' | 'role'>>): Promise<void> {
-  const sets: string[] = []
-  const params: (string | number | null)[] = []
-
-  if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name) }
-  if (data.email !== undefined) { sets.push('email = ?'); params.push(data.email) }
-  if (data.avatar_url !== undefined) { sets.push('avatar_url = ?'); params.push(data.avatar_url) }
-  if (data.role !== undefined) { sets.push('role = ?'); params.push(data.role) }
-
-  if (sets.length === 0) return
-
-  params.push(id)
-  runWrite(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params)
-  await persistDatabase()
-}
-
-export async function toggleUserActive(id: number): Promise<void> {
-  runWrite('UPDATE users SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE id = ?', [id])
-  await persistDatabase()
+export async function toggleUserActive(id: string): Promise<void> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('active')
+    .eq('user_id', id)
+    .single()
+  if (!data) return
+  const { error } = await supabase
+    .from('profiles')
+    .update({ active: !data.active })
+    .eq('user_id', id)
+  if (error) throw new Error(error.message)
 }

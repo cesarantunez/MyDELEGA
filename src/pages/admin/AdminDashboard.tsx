@@ -22,9 +22,9 @@ export default function AdminDashboard() {
   const [employeeCount, setEmployeeCount] = useState(0)
 
   useEffect(() => {
-    setStats(getTaskStats())
-    setCompliance(getComplianceByArea())
-    setEmployeeCount(getActiveEmployeeCount())
+    getTaskStats().then(setStats).catch(console.error)
+    getComplianceByArea().then(setCompliance).catch(console.error)
+    getActiveEmployeeCount().then(setEmployeeCount).catch(console.error)
   }, [])
 
   const statCards = [

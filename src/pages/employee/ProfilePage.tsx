@@ -21,8 +21,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return
-    setHistory(getMyWeeklyHistory(user.id, 4))
-    setNotifications(getMyNotifications(user.id))
+    getMyWeeklyHistory(user.id, 4).then(setHistory).catch(console.error)
+    getMyNotifications(user.id).then(setNotifications).catch(console.error)
     // Check if notifications are allowed in this browser
     if ('Notification' in window) {
       setNotifEnabled(Notification.permission === 'granted')
@@ -45,7 +45,7 @@ export default function ProfilePage() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: 1 })))
   }
 
-  const handleMarkRead = async (id: number) => {
+  const handleMarkRead = async (id: string) => {
     if (!user) return
     await markNotificationRead(user.id, id)
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: 1 } : n)))

@@ -62,12 +62,12 @@ export default function TaskTrackingPage() {
   const [filters, setFilters] = useState<TaskFilters>({})
 
   useEffect(() => {
-    setAreas(getAllAreas())
-    setEmployees(getActiveUsers())
+    getAllAreas().then(setAreas).catch(console.error)
+    getActiveUsers().then(setEmployees).catch(console.error)
   }, [])
 
   useEffect(() => {
-    setTasks(getFilteredTasks(filters))
+    getFilteredTasks(filters).then(setTasks).catch(console.error)
   }, [filters])
 
   const kanbanData = useMemo(() => {
@@ -89,7 +89,7 @@ export default function TaskTrackingPage() {
   }, [tasks])
 
   const areaOptions = [{ value: '', label: 'Todas las areas' }, ...areas.map((a) => ({ value: a, label: a }))]
-  const employeeOptions = [{ value: '', label: 'Todos' }, ...employees.map((e) => ({ value: String(e.id), label: e.name }))]
+  const employeeOptions = [{ value: '', label: 'Todos' }, ...employees.map((e) => ({ value: e.id, label: e.name }))]
   const statusOptions = [
     { value: '', label: 'Todos los estados' },
     { value: 'pending', label: 'Pendiente' },
@@ -149,11 +149,11 @@ export default function TaskTrackingPage() {
           <Select
             options={employeeOptions}
             placeholder="Empleado"
-            value={filters.assigned_to ? String(filters.assigned_to) : ''}
+            value={filters.assigned_to ?? ''}
             onChange={(e) =>
               setFilters((f) => ({
                 ...f,
-                assigned_to: e.target.value ? Number(e.target.value) : undefined,
+                assigned_to: e.target.value || undefined,
               }))
             }
           />

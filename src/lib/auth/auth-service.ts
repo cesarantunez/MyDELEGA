@@ -1,86 +1,84 @@
-import bcrypt from 'bcryptjs'
-import { runRead, runWrite, persistDatabase } from '../db/sqlite-client'
+import { supabase } from '../supabase'
 
-export interface User {
-  id: number
-  role: 'admin' | 'employee'
+export interface Profile {
+  /** user_id de auth.users — se expone como `id` para toda la app */
+  id: string
+  business_id: string
+  role: 'admin' | 'supervisor' | 'employee'
   name: string
   email: string
+  area_id: string | null
   avatar_url: string | null
-  active: number
-  created_at: string
+  active: boolean
 }
 
-interface UserRow extends User {
-  password_hash: string
+interface ProfileRow {
+  user_id: string
+  business_id: string
+  role: 'admin' | 'supervisor' | 'employee'
+  name: string
+  email: string | null
+  area_id: string | null
+  avatar_url: string | null
+  active: boolean
 }
 
-/**
- * Login with email + password.
- * Validates credentials against SQLite, creates active_session.
- */
-export async function login(email: string, password: string): Promise<User> {
-  const rows = runRead<UserRow>(
-    'SELECT * FROM users WHERE email = ? AND active = 1',
-    [email]
-  )
-
-  if (rows.length === 0) {
-    throw new Error('Credenciales invalidas')
-  }
-
-  const user = rows[0]
-
-  if (!user.password_hash) {
-    throw new Error('Este usuario no tiene contraseña configurada')
-  }
-
-  const valid = await bcrypt.compare(password, user.password_hash)
-  if (!valid) {
-    throw new Error('Credenciales invalidas')
-  }
-
-  // Write active session
-  runWrite(
-    `INSERT OR REPLACE INTO active_session (id, user_id, started_at) VALUES (1, ?, datetime('now'))`,
-    [user.id]
-  )
-  await persistDatabase()
-
-  const { password_hash: _, ...safeUser } = user
-  return safeUser
+function translateAuthError(message: string): string {
+  if (/invalid login credentials/i.test(message)) return 'Credenciales invalidas'
+  if (/email not confirmed/i.test(message)) return 'Confirma tu correo antes de iniciar sesion'
+  if (/rate limit/i.test(message)) return 'Demasiados intentos. Espera un momento'
+  if (/already registered/i.test(message)) return 'Ese correo ya tiene una cuenta'
+  return message
 }
 
-/**
- * Get current session from SQLite.
- * Returns the logged-in user or null if no session.
- */
-export function getCurrentSession(): User | null {
-  const sessions = runRead<{ user_id: number }>(
-    'SELECT user_id FROM active_session WHERE id = 1'
-  )
-
-  if (sessions.length === 0 || !sessions[0].user_id) {
-    return null
-  }
-
-  const users = runRead<UserRow>(
-    'SELECT * FROM users WHERE id = ? AND active = 1',
-    [sessions[0].user_id]
-  )
-
-  if (users.length === 0) {
-    return null
-  }
-
-  const { password_hash: _, ...safeUser } = users[0]
-  return safeUser
+export async function login(email: string, password: string): Promise<void> {
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw new Error(translateAuthError(error.message))
 }
 
-/**
- * Logout: clear active session and persist.
- */
+export async function signUpOwner(email: string, password: string, name: string): Promise<{ needsEmailConfirm: boolean }> {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { name },
+      emailRedirectTo: `${window.location.origin}/onboarding`,
+    },
+  })
+  if (error) throw new Error(translateAuthError(error.message))
+  return { needsEmailConfirm: !data.session }
+}
+
 export async function logout(): Promise<void> {
-  runWrite('DELETE FROM active_session WHERE id = 1')
-  await persistDatabase()
+  await supabase.auth.signOut()
+}
+
+/** Lee el perfil del usuario con sesion activa. null = sin sesion o sin perfil (onboarding pendiente). */
+export async function fetchProfile(): Promise<Profile | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle<ProfileRow>()
+
+  if (error || !data || !data.active) return null
+
+  return {
+    id: data.user_id,
+    business_id: data.business_id,
+    role: data.role,
+    name: data.name,
+    email: data.email ?? user.email ?? '',
+    area_id: data.area_id,
+    avatar_url: data.avatar_url,
+    active: data.active,
+  }
+}
+
+export async function hasSession(): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session !== null
 }

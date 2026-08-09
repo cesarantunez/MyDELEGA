@@ -3,140 +3,141 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion, AnimatePresence } from 'framer-motion'
-import { UserPlus, X, UserCircle, Mail, Copy, CheckCircle2 } from 'lucide-react'
+import { UserPlus, X, Mail, Copy, CheckCircle2, Link2 } from 'lucide-react'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Badge } from '../../components/ui/badge'
+import { supabase } from '../../lib/supabase'
 import {
   getAllUsers,
-  createUser,
   toggleUserActive,
   type UserRow,
 } from '../../lib/repositories/user.repository'
 import { hapticSuccess } from '../../lib/haptic'
 
-const createSchema = z.object({
+const inviteSchema = z.object({
   name: z.string().min(2, 'Minimo 2 caracteres'),
   email: z.string().email('Email invalido'),
-  password: z.string().min(6, 'Minimo 6 caracteres'),
-  role: z.enum(['admin', 'employee']),
-  area: z.string().optional(),
+  role: z.enum(['employee', 'supervisor']),
+  area_id: z.string().optional(),
 })
 
-type CreateForm = z.infer<typeof createSchema>
+type InviteForm = z.infer<typeof inviteSchema>
 
 const roleOptions = [
   { value: 'employee', label: 'Empleado' },
-  { value: 'admin', label: 'Administrador' },
+  { value: 'supervisor', label: 'Supervisor' },
 ]
 
-const areaOptions = [
-  { value: 'Cajas', label: 'Cajas' },
-  { value: 'Almacen', label: 'Almacen' },
-  { value: 'Piso de Ventas', label: 'Piso de Ventas' },
-  { value: 'Perecederos', label: 'Perecederos' },
-  { value: 'Panaderia', label: 'Panaderia' },
-  { value: 'General', label: 'General' },
-]
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  supervisor: 'Supervisor',
+  employee: 'Empleado',
+}
+
+interface AreaOption {
+  id: string
+  name: string
+}
 
 interface InviteResult {
   name: string
   email: string
-  password: string
   emailSent: boolean
+  inviteLink: string
   errorDetail?: string
 }
 
 export default function EmployeesPage() {
   const [users, setUsers] = useState<UserRow[]>([])
+  const [areas, setAreas] = useState<AreaOption[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<InviteForm>({
+    resolver: zodResolver(inviteSchema),
     defaultValues: { role: 'employee' },
   })
 
-  const loadUsers = () => setUsers(getAllUsers())
+  const loadUsers = () => {
+    getAllUsers().then(setUsers).catch(console.error)
+  }
 
-  useEffect(() => { loadUsers() }, [])
+  useEffect(() => {
+    loadUsers()
+    supabase.from('areas').select('id, name').order('sort').then(({ data }) => {
+      if (data) setAreas(data as AreaOption[])
+    })
+  }, [])
 
-  const sendInviteEmail = async (name: string, email: string, password: string, role: string): Promise<{ ok: boolean; error?: string }> => {
+  const onSubmit = async (data: InviteForm) => {
+    setInviteError(null)
     try {
-      const appUrl = window.location.origin
-      const res = await fetch('/api/send-invite', {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sin sesion activa')
+
+      const res = await fetch('/api/invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role, appUrl }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          area_id: data.area_id || null,
+        }),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        return { ok: false, error: body.error || body.detail || `HTTP ${res.status}` }
+
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) {
+        throw new Error(body?.error?.message || `Error HTTP ${res.status}`)
       }
-      return { ok: true }
+
+      hapticSuccess()
+      setShowForm(false)
+      setInviteResult({
+        name: data.name,
+        email: data.email,
+        emailSent: Boolean(body.email_sent),
+        inviteLink: body.invite_link,
+        errorDetail: body.email_error,
+      })
+      reset()
+      loadUsers()
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : 'Error de red' }
+      setInviteError(err instanceof Error ? err.message : 'Error al invitar')
     }
   }
 
-  const onSubmit = async (data: CreateForm) => {
-    await createUser({
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      role: data.role,
-      avatar_url: avatarPreview,
-    })
-
-    // Try to send invite email
-    const result = await sendInviteEmail(data.name, data.email, data.password, data.role)
-
-    hapticSuccess()
-    setShowForm(false)
-    setInviteResult({
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      emailSent: result.ok,
-      errorDetail: result.error,
-    })
-    reset()
-    setAvatarPreview(null)
-    loadUsers()
-  }
-
-  const handleToggleActive = async (id: number) => {
+  const handleToggleActive = async (id: string) => {
     await toggleUserActive(id)
     loadUsers()
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setAvatarPreview(reader.result as string)
-    reader.readAsDataURL(file)
-  }
+  const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }))
+  const areaName = (id: string | null) => areas.find((a) => a.id === id)?.name
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-blanco">Empleados</h2>
-          <p className="text-blanco/50 text-sm">{users.length} registrado(s)</p>
+          <h2 className="text-xl font-bold text-blanco">Equipo</h2>
+          <p className="text-blanco/50 text-sm">{users.length} miembro(s)</p>
         </div>
         <Button onClick={() => setShowForm(true)} size="sm">
           <UserPlus size={16} />
-          Crear
+          Invitar
         </Button>
       </div>
 
-      {/* Create form modal */}
+      {/* Invite form modal */}
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -154,45 +155,35 @@ export default function EmployeesPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-blanco">Nuevo empleado</h3>
+                <h3 className="text-lg font-semibold text-blanco">Invitar al equipo</h3>
                 <button onClick={() => setShowForm(false)} className="text-blanco/40 hover:text-blanco">
                   <X size={20} />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-                {/* Avatar */}
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-blanco/10 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {avatarPreview ? (
-                      <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <UserCircle size={28} className="text-blanco/30" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-sm text-blanco/60 mb-1">Foto (opcional)</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="text-xs text-blanco/50 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-blanco/10 file:text-blanco/70 hover:file:bg-blanco/20"
-                    />
-                  </div>
-                </div>
-
                 <Input id="name" label="Nombre" placeholder="Juan Perez" error={errors.name?.message} {...register('name')} />
-                <Input id="email" label="Email" type="email" placeholder="juan@mydelega.com" error={errors.email?.message} {...register('email')} />
-                <Input id="password" label="Contraseña" type="password" placeholder="Minimo 6 caracteres" error={errors.password?.message} {...register('password')} />
+                <Input id="email" label="Email" type="email" placeholder="juan@ejemplo.com" error={errors.email?.message} {...register('email')} />
                 <Select id="role" label="Rol" options={roleOptions} error={errors.role?.message} {...register('role')} />
-                <Select id="area" label="Area" options={areaOptions} placeholder="Seleccionar area" {...register('area')} />
+                <Select id="area_id" label="Area" options={areaOptions} placeholder="Seleccionar area (opcional)" {...register('area_id')} />
+
+                <p className="text-[10px] text-blanco/40">
+                  Recibira un enlace personal para activar su cuenta y definir su
+                  propia contraseña. Nunca se envian contraseñas por correo.
+                </p>
+
+                {inviteError && (
+                  <div className="bg-rojo/20 border border-rojo/40 rounded-xl px-4 py-3">
+                    <p className="text-rojo text-sm text-center">{inviteError}</p>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button type="button" variant="secondary" className="flex-1" onClick={() => setShowForm(false)}>
                     Cancelar
                   </Button>
                   <Button type="submit" className="flex-1" disabled={isSubmitting}>
-                    {isSubmitting ? 'Creando...' : 'Crear empleado'}
+                    {isSubmitting ? 'Enviando...' : 'Enviar invitacion'}
                   </Button>
                 </div>
               </form>
@@ -224,49 +215,37 @@ export default function EmployeesPage() {
                 {inviteResult.emailSent ? (
                   <Mail size={28} className="text-amarillo" />
                 ) : (
-                  <Mail size={28} className="text-azul" />
+                  <Link2 size={28} className="text-azul" />
                 )}
               </div>
 
               <h3 className="text-lg font-bold text-blanco mb-1">
-                {inviteResult.emailSent ? 'Invitacion enviada!' : 'Empleado creado'}
+                {inviteResult.emailSent ? 'Invitacion enviada!' : 'Invitacion creada'}
               </h3>
-              <p className="text-blanco/50 text-sm mb-2">
+              <p className="text-blanco/50 text-sm mb-4">
                 {inviteResult.emailSent
-                  ? `Se envio un email a ${inviteResult.email} con las credenciales y enlace de acceso.`
-                  : 'No se pudo enviar el email. Comparte las credenciales manualmente:'}
+                  ? `${inviteResult.email} recibio un correo con su enlace de activacion.`
+                  : 'El correo no salio. Comparte el enlace de activacion por WhatsApp:'}
               </p>
               {!inviteResult.emailSent && inviteResult.errorDetail && (
                 <p className="text-rojo/70 text-xs mb-4 bg-rojo/10 rounded-lg px-3 py-2">
-                  Error: {inviteResult.errorDetail}
+                  {inviteResult.errorDetail}
                 </p>
               )}
-
-              {/* Credentials card */}
-              <div className="bg-blanco/5 border border-blanco/10 rounded-xl p-4 text-left mb-4">
-                <div className="mb-3">
-                  <p className="text-blanco/40 text-[10px] uppercase">Email</p>
-                  <p className="text-blanco text-sm font-medium">{inviteResult.email}</p>
-                </div>
-                <div>
-                  <p className="text-blanco/40 text-[10px] uppercase">Contrasena</p>
-                  <p className="text-amarillo text-sm font-semibold">{inviteResult.password}</p>
-                </div>
-              </div>
 
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
                   className="flex-1"
                   onClick={() => {
-                    const text = `MyDELEGA - Tus credenciales:\nEmail: ${inviteResult.email}\nContrasena: ${inviteResult.password}\nEnlace: ${window.location.origin}`
+                    const text = `Hola ${inviteResult.name}! Te invite a MyDELEGA. Activa tu cuenta aqui (enlace personal, de un solo uso): ${inviteResult.inviteLink}`
                     navigator.clipboard.writeText(text)
                     setCopied(true)
                     setTimeout(() => setCopied(false), 2000)
                   }}
                 >
                   {copied ? <CheckCircle2 size={16} className="mr-1" /> : <Copy size={16} className="mr-1" />}
-                  {copied ? 'Copiado' : 'Copiar'}
+                  {copied ? 'Copiado' : 'Copiar enlace'}
                 </Button>
                 <Button className="flex-1" onClick={() => { setInviteResult(null); setCopied(false) }}>
                   Listo
@@ -298,11 +277,14 @@ export default function EmployeesPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-blanco text-sm font-medium truncate">{user.name}</p>
-                <p className="text-blanco/40 text-xs truncate">{user.email}</p>
+                <p className="text-blanco/40 text-xs truncate">
+                  {user.email}
+                  {areaName(user.area_id) ? ` · ${areaName(user.area_id)}` : ''}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="default">
-                  {user.role === 'admin' ? 'Admin' : 'Empleado'}
+                  {ROLE_LABELS[user.role] ?? user.role}
                 </Badge>
                 <button
                   onClick={() => handleToggleActive(user.id)}

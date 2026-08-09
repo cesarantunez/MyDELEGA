@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth.store'
 import LoginPage from '../pages/auth/LoginPage'
 import RegisterPage from '../pages/auth/RegisterPage'
 import JoinPage from '../pages/auth/JoinPage'
+import OnboardingPage from '../pages/auth/OnboardingPage'
 import AdminLayout from '../components/admin/AdminLayout'
 import AdminDashboard from '../pages/admin/AdminDashboard'
 import EmployeesPage from '../pages/admin/EmployeesPage'
@@ -16,27 +17,42 @@ import MyTasksPage from '../pages/employee/MyTasksPage'
 import MyChecklistPage from '../pages/employee/MyChecklistPage'
 import ProfilePage from '../pages/employee/ProfilePage'
 
-/** Redirects to login if not authenticated */
+/** Redirects to login if not authenticated; to onboarding if session without business */
 function RequireAuth() {
-  const { isAuthenticated } = useAuthStore()
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const { hasSession, user } = useAuthStore()
+  if (!hasSession) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/onboarding" replace />
   return <Outlet />
 }
 
 /** Redirects to dashboard if already authenticated */
 function GuestOnly() {
-  const { isAuthenticated, user } = useAuthStore()
-  if (isAuthenticated && user) {
-    const dest = user.role === 'admin' ? '/admin/dashboard' : '/employee/checklist'
+  const { hasSession, user } = useAuthStore()
+  if (hasSession && user) {
+    const dest = user.role === 'employee' ? '/employee/checklist' : '/admin/dashboard'
+    return <Navigate to={dest} replace />
+  }
+  if (hasSession && !user) {
+    return <Navigate to="/onboarding" replace />
+  }
+  return <Outlet />
+}
+
+/** Onboarding: requires session; if profile already exists go to dashboard */
+function OnboardingGuard() {
+  const { hasSession, user } = useAuthStore()
+  if (!hasSession) return <Navigate to="/login" replace />
+  if (user) {
+    const dest = user.role === 'employee' ? '/employee/checklist' : '/admin/dashboard'
     return <Navigate to={dest} replace />
   }
   return <Outlet />
 }
 
-/** Only allows admin role */
+/** Only allows admin/supervisor roles */
 function RequireAdmin() {
   const { user } = useAuthStore()
-  if (user?.role !== 'admin') return <Navigate to="/login" replace />
+  if (user?.role !== 'admin' && user?.role !== 'supervisor') return <Navigate to="/login" replace />
   return <Outlet />
 }
 
@@ -56,8 +72,13 @@ export const router = createBrowserRouter([
       { path: '/register', element: <RegisterPage /> },
     ],
   },
-  // Join route (always accessible, even if logged in)
+  // Join route: acepta invitacion y define contraseña (siempre accesible)
   { path: '/join', element: <JoinPage /> },
+  // Onboarding: crear el negocio (sesion sin perfil)
+  {
+    element: <OnboardingGuard />,
+    children: [{ path: '/onboarding', element: <OnboardingPage /> }],
+  },
 
   // Admin routes (with layout)
   {

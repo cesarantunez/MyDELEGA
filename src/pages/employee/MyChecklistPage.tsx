@@ -17,14 +17,14 @@ export default function MyChecklistPage() {
 
   const load = useCallback(() => {
     if (!user) return
-    setData(getMyWeeklyChecklist(user.id))
+    getMyWeeklyChecklist(user.id).then(setData).catch(console.error)
   }, [user])
 
   useEffect(() => {
     load()
   }, [load])
 
-  const handleToggle = async (itemId: number) => {
+  const handleToggle = async (itemId: string) => {
     if (!user) return
     hapticSuccess()
     await toggleChecklistItem(user.id, itemId)

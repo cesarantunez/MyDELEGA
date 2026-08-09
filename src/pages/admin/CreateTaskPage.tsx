@@ -53,16 +53,21 @@ export default function CreateTaskPage() {
   const watchedArea = watch('area')
 
   useEffect(() => {
-    setAreas(getAllAreas())
-    setEmployees(getActiveUsers().filter((u) => u.role === 'employee'))
+    getAllAreas().then(setAreas).catch(console.error)
+    getActiveUsers()
+      .then((users) => setEmployees(users.filter((u) => u.role === 'employee')))
+      .catch(console.error)
   }, [])
 
   // Load templates when area changes
   useEffect(() => {
     if (watchedArea) {
-      const tpls = getTemplatesByArea(watchedArea)
-      setTemplates(tpls)
-      setSelectedTemplate(null)
+      getTemplatesByArea(watchedArea)
+        .then((tpls) => {
+          setTemplates(tpls)
+          setSelectedTemplate(null)
+        })
+        .catch(console.error)
     } else {
       setTemplates([])
     }
@@ -78,13 +83,13 @@ export default function CreateTaskPage() {
   const onSubmit = async (data: TaskForm) => {
     if (!user) return
 
-    const checklistItems = selectedTemplate?.default_checklist
-      ? JSON.parse(selectedTemplate.default_checklist) as string[]
+    const checklistItems = selectedTemplate?.default_checklist?.length
+      ? selectedTemplate.default_checklist
       : undefined
 
     await createTask({
       template_id: selectedTemplate?.id ?? null,
-      assigned_to: Number(data.assigned_to),
+      assigned_to: data.assigned_to,
       assigned_by: user.id,
       area: data.area,
       title: data.title,
@@ -200,11 +205,11 @@ export default function CreateTaskPage() {
         />
 
         {/* Selected template checklist preview */}
-        {selectedTemplate?.default_checklist && (
+        {selectedTemplate && selectedTemplate.default_checklist.length > 0 && (
           <Card className="bg-blanco/5">
             <p className="text-xs font-medium text-blanco/60 mb-2">Checklist incluido:</p>
             <ul className="space-y-1">
-              {(JSON.parse(selectedTemplate.default_checklist) as string[]).map((item, i) => (
+              {selectedTemplate.default_checklist.map((item, i) => (
                 <li key={i} className="text-xs text-blanco/50 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-amarillo/50" />
                   {item}

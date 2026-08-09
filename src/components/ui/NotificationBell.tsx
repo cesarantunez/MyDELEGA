@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, Check } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth.store'
+import { supabase } from '../../lib/supabase'
 import {
   getMyUnreadCount,
   getMyNotifications,
@@ -27,16 +28,28 @@ export default function NotificationBell() {
 
   useEffect(() => {
     if (!user) return
-    setUnreadCount(getMyUnreadCount(user.id))
-    const interval = setInterval(() => {
-      setUnreadCount(getMyUnreadCount(user.id))
-    }, 15000)
-    return () => clearInterval(interval)
+    getMyUnreadCount(user.id).then(setUnreadCount).catch(console.error)
+
+    // Realtime: la campana se actualiza al instante cuando llega algo nuevo
+    const channel = supabase
+      .channel(`notifications-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => {
+          getMyUnreadCount(user.id).then(setUnreadCount).catch(console.error)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [user])
 
   useEffect(() => {
     if (isOpen && user) {
-      setNotifications(getMyNotifications(user.id))
+      getMyNotifications(user.id).then(setNotifications).catch(console.error)
     }
   }, [isOpen, user])
 
@@ -52,7 +65,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [isOpen])
 
-  const handleMarkRead = async (id: number) => {
+  const handleMarkRead = async (id: string) => {
     if (!user) return
     await markNotificationRead(user.id, id)
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: 1 } : n)))

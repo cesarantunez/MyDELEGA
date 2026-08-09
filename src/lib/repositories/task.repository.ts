@@ -1,18 +1,19 @@
-import { runRead, runWrite, persistDatabase } from '../db/sqlite-client'
+import { supabase } from '../supabase'
+import { useAuthStore } from '../../stores/auth.store'
 import { notifyTaskAssigned } from '../notifications/notification-service'
 
 export interface TaskRow {
-  id: number
-  template_id: number | null
-  assigned_to: number
-  assigned_by: number
+  id: string
+  template_id: string | null
+  assigned_to: string
+  assigned_by: string
   area: string
   title: string
   description: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   due_date: string | null
-  evidence_base64: string | null
+  evidence_path: string | null
   completed_at: string | null
   created_at: string
   // Joined fields
@@ -21,19 +22,19 @@ export interface TaskRow {
 }
 
 export interface TaskTemplateRow {
-  id: number
+  id: string
   area: string
   title: string
   description: string | null
   default_priority: string
-  default_checklist: string | null
+  default_checklist: string[]
   created_at: string
 }
 
 export interface CreateTaskInput {
-  template_id?: number | null
-  assigned_to: number
-  assigned_by: number
+  template_id?: string | null
+  assigned_to: string
+  assigned_by: string
   area: string
   title: string
   description?: string
@@ -44,7 +45,7 @@ export interface CreateTaskInput {
 
 export interface TaskFilters {
   area?: string
-  assigned_to?: number
+  assigned_to?: string
   status?: string
   from_date?: string
   to_date?: string
@@ -63,159 +64,183 @@ export interface AreaCompliance {
   percentage: number
 }
 
-// ── Queries ────────────────────────────────────────────────
+// ── Select con nombres joineados ───────────────────────────
 
-const BASE_SELECT = `
-  SELECT t.*,
-    u1.name as assigned_to_name,
-    u2.name as assigned_by_name
-  FROM tasks t
-  LEFT JOIN users u1 ON t.assigned_to = u1.id
-  LEFT JOIN users u2 ON t.assigned_by = u2.id
+export const TASK_SELECT = `
+  *,
+  assigned_to_profile:profiles!tasks_assigned_to_fkey(name),
+  assigned_by_profile:profiles!tasks_assigned_by_fkey(name)
 `
 
-export function getAllTasks(): TaskRow[] {
-  return runRead<TaskRow>(`${BASE_SELECT} ORDER BY t.created_at DESC`)
+interface RawTaskRow extends Omit<TaskRow, 'assigned_to_name' | 'assigned_by_name'> {
+  assigned_to_profile: { name: string } | null
+  assigned_by_profile: { name: string } | null
 }
 
-export function getTaskById(id: number): TaskRow | null {
-  const rows = runRead<TaskRow>(`${BASE_SELECT} WHERE t.id = ?`, [id])
-  return rows[0] ?? null
+export function mapTask(row: RawTaskRow): TaskRow {
+  const { assigned_to_profile, assigned_by_profile, ...rest } = row
+  return {
+    ...rest,
+    assigned_to_name: assigned_to_profile?.name,
+    assigned_by_name: assigned_by_profile?.name,
+  }
 }
 
-export function getFilteredTasks(filters: TaskFilters): TaskRow[] {
-  const conditions: string[] = []
-  const params: (string | number)[] = []
+function currentBusinessId(): string {
+  const user = useAuthStore.getState().user
+  if (!user) throw new Error('Sin sesion activa')
+  return user.business_id
+}
 
-  if (filters.area) {
-    conditions.push('t.area = ?')
-    params.push(filters.area)
-  }
-  if (filters.assigned_to) {
-    conditions.push('t.assigned_to = ?')
-    params.push(filters.assigned_to)
-  }
+// ── Queries ────────────────────────────────────────────────
+
+export async function getFilteredTasks(filters: TaskFilters): Promise<TaskRow[]> {
+  let query = supabase.from('tasks').select(TASK_SELECT)
+
+  if (filters.area) query = query.eq('area', filters.area)
+  if (filters.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
   if (filters.status) {
     if (filters.status === 'overdue') {
-      conditions.push("t.status IN ('pending', 'in_progress') AND t.due_date < datetime('now')")
+      query = query
+        .in('status', ['pending', 'in_progress'])
+        .lt('due_date', new Date().toISOString())
     } else {
-      conditions.push('t.status = ?')
-      params.push(filters.status)
+      query = query.eq('status', filters.status)
     }
   }
-  if (filters.from_date) {
-    conditions.push('t.created_at >= ?')
-    params.push(filters.from_date)
-  }
-  if (filters.to_date) {
-    conditions.push('t.created_at <= ?')
-    params.push(filters.to_date)
-  }
+  if (filters.from_date) query = query.gte('created_at', filters.from_date)
+  if (filters.to_date) query = query.lte('created_at', filters.to_date)
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  return runRead<TaskRow>(`${BASE_SELECT} ${where} ORDER BY t.created_at DESC`, params)
+  const { data, error } = await query.order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data as unknown as RawTaskRow[]).map(mapTask)
 }
 
-export function getTaskStats(): TaskStats {
-  const active = runRead<{ count: number }>(
-    "SELECT COUNT(*) as count FROM tasks WHERE status IN ('pending', 'in_progress')"
-  )
-  const completedToday = runRead<{ count: number }>(
-    "SELECT COUNT(*) as count FROM tasks WHERE status = 'completed' AND date(completed_at) = date('now')"
-  )
-  const overdue = runRead<{ count: number }>(
-    "SELECT COUNT(*) as count FROM tasks WHERE status IN ('pending', 'in_progress') AND due_date < datetime('now') AND due_date IS NOT NULL"
-  )
+export async function getTaskStats(): Promise<TaskStats> {
+  const nowIso = new Date().toISOString()
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+
+  const [active, completedToday, overdue] = await Promise.all([
+    supabase.from('tasks').select('id', { count: 'exact', head: true })
+      .in('status', ['pending', 'in_progress']),
+    supabase.from('tasks').select('id', { count: 'exact', head: true })
+      .eq('status', 'completed')
+      .gte('completed_at', todayStart.toISOString()),
+    supabase.from('tasks').select('id', { count: 'exact', head: true })
+      .in('status', ['pending', 'in_progress'])
+      .lt('due_date', nowIso),
+  ])
+
   return {
-    active: active[0]?.count ?? 0,
-    completed_today: completedToday[0]?.count ?? 0,
-    overdue: overdue[0]?.count ?? 0,
+    active: active.count ?? 0,
+    completed_today: completedToday.count ?? 0,
+    overdue: overdue.count ?? 0,
   }
 }
 
-export function getComplianceByArea(): AreaCompliance[] {
-  const rows = runRead<{ area: string; total: number; completed: number }>(
-    `SELECT area,
-      COUNT(*) as total,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-    FROM tasks
-    GROUP BY area`
-  )
-  return rows.map((r) => ({
-    area: r.area,
-    total: r.total,
-    completed: r.completed,
-    percentage: r.total > 0 ? Math.round((r.completed / r.total) * 100) : 0,
+export async function getComplianceByArea(): Promise<AreaCompliance[]> {
+  const { data, error } = await supabase.from('tasks').select('area, status')
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, { total: number; completed: number }>()
+  for (const row of data as { area: string; status: string }[]) {
+    const entry = map.get(row.area) ?? { total: 0, completed: 0 }
+    entry.total++
+    if (row.status === 'completed') entry.completed++
+    map.set(row.area, entry)
+  }
+
+  return Array.from(map.entries()).map(([area, { total, completed }]) => ({
+    area,
+    total,
+    completed,
+    percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
   }))
 }
 
-// ── Templates ──────────────────────────────────────────────
+// ── Templates y areas ──────────────────────────────────────
 
-export function getTemplatesByArea(area: string): TaskTemplateRow[] {
-  return runRead<TaskTemplateRow>(
-    'SELECT * FROM task_templates WHERE area = ? ORDER BY title',
-    [area]
-  )
+export async function getTemplatesByArea(area: string): Promise<TaskTemplateRow[]> {
+  const { data, error } = await supabase
+    .from('task_templates')
+    .select('*')
+    .eq('area', area)
+    .order('title')
+  if (error) throw new Error(error.message)
+  return data as TaskTemplateRow[]
 }
 
-export function getAllAreas(): string[] {
-  const rows = runRead<{ area: string }>('SELECT DISTINCT area FROM task_templates ORDER BY area')
-  return rows.map((r) => r.area)
+export async function getAllAreas(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('areas')
+    .select('name')
+    .order('sort')
+  if (error) throw new Error(error.message)
+  return (data as { name: string }[]).map((r) => r.name)
 }
 
 // ── Mutations ──────────────────────────────────────────────
 
-export async function createTask(input: CreateTaskInput): Promise<number> {
-  runWrite(
-    `INSERT INTO tasks (template_id, assigned_to, assigned_by, area, title, description, priority, status, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-    [
-      input.template_id ?? null,
-      input.assigned_to,
-      input.assigned_by,
-      input.area,
-      input.title,
-      input.description ?? null,
-      input.priority,
-      input.due_date ?? null,
-    ]
-  )
+export async function createTask(input: CreateTaskInput): Promise<string> {
+  const businessId = currentBusinessId()
 
-  const taskRows = runRead<{ id: number }>('SELECT last_insert_rowid() as id')
-  const taskId = taskRows[0].id
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      business_id: businessId,
+      template_id: input.template_id ?? null,
+      assigned_to: input.assigned_to,
+      assigned_by: input.assigned_by,
+      area: input.area,
+      title: input.title,
+      description: input.description ?? null,
+      priority: input.priority,
+      status: 'pending',
+      due_date: input.due_date ? new Date(input.due_date).toISOString() : null,
+    })
+    .select('id')
+    .single()
 
-  // Create checklist if items provided
+  if (error) throw new Error(error.message)
+  const taskId = (data as { id: string }).id
+
   if (input.checklist_items && input.checklist_items.length > 0) {
-    runWrite(
-      'INSERT INTO checklists (task_id, title) VALUES (?, ?)',
-      [taskId, 'Checklist']
+    const { error: clError } = await supabase.from('checklist_items').insert(
+      input.checklist_items.map((title, i) => ({
+        task_id: taskId,
+        title,
+        sort_order: i,
+      }))
     )
-    const clRows = runRead<{ id: number }>('SELECT last_insert_rowid() as id')
-    const checklistId = clRows[0].id
-
-    for (let i = 0; i < input.checklist_items.length; i++) {
-      runWrite(
-        'INSERT INTO checklist_tasks (checklist_id, title, sort_order) VALUES (?, ?, ?)',
-        [checklistId, input.checklist_items[i], i]
-      )
-    }
+    if (clError) throw new Error(clError.message)
   }
 
-  // Notify employee about new task
-  notifyTaskAssigned(input.assigned_to, input.title, taskId)
+  await notifyTaskAssigned(businessId, input.assigned_to, input.title, taskId)
 
-  await persistDatabase()
   return taskId
 }
 
 export async function updateTaskStatus(
-  id: number,
+  id: string,
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
 ): Promise<void> {
-  const completedAt = status === 'completed' ? "datetime('now')" : 'NULL'
-  runWrite(
-    `UPDATE tasks SET status = ?, completed_at = ${completedAt} WHERE id = ?`,
-    [status, id]
-  )
-  await persistDatabase()
+  const { error } = await supabase
+    .from('tasks')
+    .update({
+      status,
+      completed_at: status === 'completed' ? new Date().toISOString() : null,
+    })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+// ── Evidencia (Storage privado, URL firmada) ───────────────
+
+export async function getEvidenceUrl(path: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from('evidence')
+    .createSignedUrl(path, 3600)
+  if (error) return null
+  return data.signedUrl
 }

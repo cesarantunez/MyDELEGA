@@ -53,11 +53,11 @@ export default function ReportsPage() {
     return undefined
   }, [dateFrom, dateTo])
 
-  const loadData = useCallback(() => {
-    const range = getRange()
-    setEmployeeData(getComplianceByEmployee(range))
-    setAreaData(getComplianceByAreaRadar(range))
-    setFailedTasks(getMostFailedTasks(range))
+  const loadData = useCallback((rangeOverride?: DateRange) => {
+    const range = rangeOverride === undefined ? getRange() : rangeOverride
+    getComplianceByEmployee(range).then(setEmployeeData).catch(console.error)
+    getComplianceByAreaRadar(range).then(setAreaData).catch(console.error)
+    getMostFailedTasks(range).then(setFailedTasks).catch(console.error)
   }, [getRange])
 
   useEffect(() => {
@@ -71,10 +71,9 @@ export default function ReportsPage() {
   const handleClearFilter = () => {
     setDateFrom('')
     setDateTo('')
-    const noRange = undefined
-    setEmployeeData(getComplianceByEmployee(noRange))
-    setAreaData(getComplianceByAreaRadar(noRange))
-    setFailedTasks(getMostFailedTasks(noRange))
+    getComplianceByEmployee(undefined).then(setEmployeeData).catch(console.error)
+    getComplianceByAreaRadar(undefined).then(setAreaData).catch(console.error)
+    getMostFailedTasks(undefined).then(setFailedTasks).catch(console.error)
   }
 
   return (

@@ -1,4 +1,5 @@
-import { runRead, runWrite, persistDatabase } from '../db/sqlite-client'
+import { supabase } from '../supabase'
+import { useAuthStore } from '../../stores/auth.store'
 
 // ══════════════════════════════════════════════════════════════
 // Checklist semanal consolidado para admin.
@@ -7,10 +8,10 @@ import { runRead, runWrite, persistDatabase } from '../db/sqlite-client'
 // ══════════════════════════════════════════════════════════════
 
 export interface WeeklyTaskEntry {
-  task_id: number
+  task_id: string
   title: string
   area: string
-  employee_id: number
+  employee_id: string
   employee_name: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   priority: string
@@ -35,7 +36,7 @@ export interface WeeklyReportData {
 }
 
 export interface EmployeeSummary {
-  employee_id: number
+  employee_id: string
   employee_name: string
   total: number
   a_tiempo: number
@@ -54,15 +55,15 @@ export interface AreaSummary {
 }
 
 export interface WeeklyReportRow {
-  id: number
+  id: string
   week_start: string
   week_end: string
-  generated_by: number
-  data: string
+  generated_by: string
+  data: WeeklyReportData
   generated_at: string
 }
 
-// ── Generate weekly report ───────────────────────────────────
+// ── Semana ───────────────────────────────────────────────────
 
 function getWeekBounds(date: Date = new Date()): { start: string; end: string } {
   const d = new Date(date)
@@ -98,37 +99,50 @@ function classifyCompletion(task: {
   return new Date(task.completed_at) <= new Date(task.due_date) ? 'a_tiempo' : 'tarde'
 }
 
-export function generateWeeklyReport(weekStart?: string, weekEnd?: string): WeeklyReportData {
+// ── Generate weekly report ───────────────────────────────────
+
+interface RawWeeklyTask {
+  id: string
+  title: string
+  area: string
+  assigned_to: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  priority: string
+  due_date: string | null
+  completed_at: string | null
+  assigned_to_profile: { name: string } | null
+}
+
+export async function generateWeeklyReport(weekStart?: string, weekEnd?: string): Promise<WeeklyReportData> {
   const bounds = weekStart && weekEnd
     ? { start: weekStart, end: weekEnd }
     : getWeekBounds()
 
-  const rows = runRead<{
-    task_id: number
-    title: string
-    area: string
-    employee_id: number
-    employee_name: string
-    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-    priority: string
-    due_date: string | null
-    completed_at: string | null
-  }>(
-    `SELECT
-      t.id as task_id, t.title, t.area,
-      t.assigned_to as employee_id, u.name as employee_name,
-      t.status, t.priority, t.due_date, t.completed_at
-     FROM tasks t
-     JOIN users u ON t.assigned_to = u.id
-     WHERE t.created_at >= ? AND t.created_at < datetime(?, '+1 day')
-     ORDER BY u.name, t.area, t.created_at`,
-    [bounds.start, bounds.end]
-  )
+  const endExclusive = new Date(bounds.end)
+  endExclusive.setDate(endExclusive.getDate() + 1)
 
-  const tasks: WeeklyTaskEntry[] = rows.map((r) => ({
-    ...r,
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, title, area, assigned_to, status, priority, due_date, completed_at, assigned_to_profile:profiles!tasks_assigned_to_fkey(name)')
+    .gte('created_at', bounds.start)
+    .lt('created_at', endExclusive.toISOString())
+    .order('area')
+  if (error) throw new Error(error.message)
+
+  const tasks: WeeklyTaskEntry[] = (data as unknown as RawWeeklyTask[]).map((r) => ({
+    task_id: r.id,
+    title: r.title,
+    area: r.area,
+    employee_id: r.assigned_to,
+    employee_name: r.assigned_to_profile?.name ?? 'Desconocido',
+    status: r.status,
+    priority: r.priority,
+    due_date: r.due_date,
+    completed_at: r.completed_at,
     completion_status: classifyCompletion(r),
-  }))
+  })).sort((a, b) =>
+    a.employee_name.localeCompare(b.employee_name) || a.area.localeCompare(b.area)
+  )
 
   const summary = {
     total: tasks.length,
@@ -138,7 +152,7 @@ export function generateWeeklyReport(weekStart?: string, weekEnd?: string): Week
   }
 
   // Group by employee
-  const empMap = new Map<number, EmployeeSummary>()
+  const empMap = new Map<string, EmployeeSummary>()
   for (const t of tasks) {
     if (!empMap.has(t.employee_id)) {
       empMap.set(t.employee_id, {
@@ -194,27 +208,35 @@ export function generateWeeklyReport(weekStart?: string, weekEnd?: string): Week
 
 // ── Save / load weekly reports ───────────────────────────────
 
-export async function saveWeeklyReport(report: WeeklyReportData, generatedBy: number): Promise<number> {
-  runWrite(
-    `INSERT INTO weekly_reports (week_start, week_end, generated_by, data) VALUES (?, ?, ?, ?)`,
-    [report.week_start, report.week_end, generatedBy, JSON.stringify(report)]
-  )
-  const rows = runRead<{ id: number }>('SELECT last_insert_rowid() as id')
-  await persistDatabase()
-  return rows[0].id
+export async function saveWeeklyReport(report: WeeklyReportData, generatedBy: string): Promise<string> {
+  const user = useAuthStore.getState().user
+  if (!user) throw new Error('Sin sesion activa')
+
+  const { data, error } = await supabase
+    .from('weekly_reports')
+    .insert({
+      business_id: user.business_id,
+      week_start: report.week_start,
+      week_end: report.week_end,
+      generated_by: generatedBy,
+      data: report,
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  return (data as { id: string }).id
 }
 
-export function getWeeklyReportHistory(): WeeklyReportRow[] {
-  return runRead<WeeklyReportRow>(
-    'SELECT * FROM weekly_reports ORDER BY week_start DESC LIMIT 20'
-  )
-}
-
-export function getWeeklyReportById(id: number): WeeklyReportRow | null {
-  const rows = runRead<WeeklyReportRow>('SELECT * FROM weekly_reports WHERE id = ?', [id])
-  return rows[0] ?? null
+export async function getWeeklyReportHistory(): Promise<WeeklyReportRow[]> {
+  const { data, error } = await supabase
+    .from('weekly_reports')
+    .select('*')
+    .order('week_start', { ascending: false })
+    .limit(20)
+  if (error) return []
+  return data as WeeklyReportRow[]
 }
 
 export function parseReportData(row: WeeklyReportRow): WeeklyReportData {
-  return JSON.parse(row.data) as WeeklyReportData
+  return row.data
 }
