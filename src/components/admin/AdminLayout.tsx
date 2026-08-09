@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth.store'
 import { LayoutDashboard, Users, ClipboardList, CheckSquare, BarChart3, LogOut, CalendarClock, GraduationCap } from 'lucide-react'
@@ -5,6 +6,7 @@ import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
 import PushBanner from '../pwa/PushBanner'
 import AgentChat from '../shared/AgentChat'
+import ProfileEditModal from '../shared/ProfileEditModal'
 
 // "Nueva tarea" salió del nav (vive en Dashboard y en el + de Tareas)
 const navItems = [
@@ -20,6 +22,14 @@ const navItems = [
 export default function AdminLayout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const [editOpen, setEditOpen] = useState(false)
+
+  const initials = user?.name
+    ?.split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() ?? 'A'
 
   const handleLogout = async () => {
     await logout()
@@ -35,6 +45,17 @@ export default function AdminLayout() {
         </h1>
         <div className="flex items-center gap-2">
           <span className="text-blanco/50 text-xs hidden sm:block">{user?.name}</span>
+          <button
+            onClick={() => setEditOpen(true)}
+            className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center bg-azul flex-shrink-0"
+            title="Mi perfil"
+          >
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-blanco text-xs font-bold">{initials}</span>
+            )}
+          </button>
           <NotificationBell />
           <button onClick={handleLogout} className="text-blanco/40 hover:text-blanco transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
             <LogOut size={18} />
@@ -50,6 +71,7 @@ export default function AdminLayout() {
       </main>
 
       <AgentChat />
+      <ProfileEditModal open={editOpen} onClose={() => setEditOpen(false)} />
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-oscuro border-t border-blanco/10 px-2 py-1 z-50">

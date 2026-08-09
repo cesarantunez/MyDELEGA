@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Bell, BellOff, ChevronRight, TrendingUp, ClipboardCheck } from 'lucide-react'
+import { Bell, BellOff, ChevronRight, TrendingUp, ClipboardCheck, Pencil } from 'lucide-react'
 import { Card } from '../../components/ui/card'
+import ProfileEditModal from '../../components/shared/ProfileEditModal'
 import { useAuthStore } from '../../stores/auth.store'
 import {
   getMyWeeklyHistory,
@@ -28,6 +29,7 @@ export default function ProfilePage() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [myEvaluations, setMyEvaluations] = useState<EvaluationRow[]>([])
   const [evalDetail, setEvalDetail] = useState<EvaluationDetail | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -74,9 +76,17 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4">
+      <ProfileEditModal open={editOpen} onClose={() => setEditOpen(false)} />
       {/* Profile card */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="p-6 text-center">
+        <Card className="p-6 text-center relative">
+          <button
+            onClick={() => setEditOpen(true)}
+            className="absolute top-3 right-3 w-9 h-9 rounded-xl bg-blanco/5 hover:bg-blanco/10 flex items-center justify-center text-blanco/50 hover:text-amarillo transition-colors"
+            title="Editar mi perfil"
+          >
+            <Pencil size={15} />
+          </button>
           {user?.avatar_url ? (
             <img src={user.avatar_url} alt="" className="w-20 h-20 rounded-2xl object-cover mx-auto mb-3" />
           ) : (
