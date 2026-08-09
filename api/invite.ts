@@ -99,6 +99,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
+    // Crear el perfil explicitamente (el trigger de DB es respaldo: GoTrue
+    // puede escribir app_metadata despues del insert del usuario).
+    if (created.user) {
+      const { error: profileError } = await admin.from('profiles').upsert(
+        {
+          user_id: created.user.id,
+          business_id: businessId,
+          role,
+          name,
+          email,
+          area_id: area_id ?? null,
+        },
+        { onConflict: 'user_id', ignoreDuplicates: true }
+      )
+      if (profileError) {
+        return res.status(500).json({ ok: false, error: { code: 'PROFILE_FAILED', message: profileError.message } })
+      }
+    }
+
     // 3. Link de un solo uso para definir contraseña
     const origin = (req.headers.origin as string) || `https://${req.headers.host}`
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({

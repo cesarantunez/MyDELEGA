@@ -1,0 +1,26 @@
+# Configuración remota de Supabase para MyDELEGA V2.
+# Se aplica con: npx supabase config push
+# OJO: config push aplica también defaults del CLI en campos no declarados.
+# Por eso pinneamos explícitamente todo lo que debe quedar como está.
+
+project_id = "mydelega"
+
+[auth]
+site_url = "https://my-delega.vercel.app"
+additional_redirect_urls = [
+  "https://my-delega.vercel.app/**",
+  "https://my-delega-*-antunezc628-gmailcoms-projects.vercel.app/**",
+  "http://localhost:5173/**",
+]
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Confirmación de correo del dueño: ON (seguridad > fricción)
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
