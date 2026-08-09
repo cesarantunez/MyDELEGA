@@ -1,15 +1,16 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth.store'
-import { LayoutDashboard, Users, PlusCircle, ClipboardList, CheckSquare, BarChart3, LogOut, CalendarClock } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, CheckSquare, BarChart3, LogOut, CalendarClock, GraduationCap } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
 import PushBanner from '../pwa/PushBanner'
 
+// "Nueva tarea" salió del nav (vive en Dashboard y en el + de Tareas)
 const navItems = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/admin/tasks', icon: ClipboardList, label: 'Tareas' },
-  { to: '/admin/tasks/new', icon: PlusCircle, label: 'Nueva' },
   { to: '/admin/products', icon: CalendarClock, label: 'Vencim.' },
+  { to: '/admin/training', icon: GraduationCap, label: 'Capacitar' },
   { to: '/admin/checklist', icon: CheckSquare, label: 'Checklist' },
   { to: '/admin/reports', icon: BarChart3, label: 'Reportes' },
   { to: '/admin/employees', icon: Users, label: 'Equipo' },

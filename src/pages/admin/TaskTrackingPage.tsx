@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { LayoutGrid, List, Filter } from 'lucide-react'
+import { LayoutGrid, List, Filter, Plus } from 'lucide-react'
 import { Card } from '../../components/ui/card'
 import { Badge, priorityLabels, statusLabels } from '../../components/ui/badge'
 import { Select } from '../../components/ui/select'
@@ -54,6 +55,7 @@ function TaskCard({ task }: { task: TaskRow }) {
 }
 
 export default function TaskTrackingPage() {
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState<TaskRow[]>([])
   const [view, setView] = useState<ViewMode>('kanban')
   const [showFilters, setShowFilters] = useState(false)
@@ -107,6 +109,9 @@ export default function TaskTrackingPage() {
           <p className="text-blanco/50 text-sm">{tasks.length} tarea(s)</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => navigate('/admin/tasks/new')}>
+            <Plus size={16} />
+          </Button>
           <Button
             variant="ghost"
             size="sm"

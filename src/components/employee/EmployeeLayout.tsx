@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/auth.store'
-import { Home, ClipboardList, CheckSquare, User, LogOut } from 'lucide-react'
+import { Home, ClipboardList, CheckSquare, User, LogOut, GraduationCap } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import NotificationBell from '../ui/NotificationBell'
 import PushBanner from '../pwa/PushBanner'
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/employee/dashboard', icon: Home, label: 'Inicio' },
   { to: '/employee/tasks', icon: ClipboardList, label: 'Tareas' },
   { to: '/employee/checklist', icon: CheckSquare, label: 'Checklist' },
+  { to: '/employee/training', icon: GraduationCap, label: 'Aprender' },
   { to: '/employee/profile', icon: User, label: 'Perfil' },
 ]
 
