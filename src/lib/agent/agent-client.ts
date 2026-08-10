@@ -23,6 +23,10 @@ export const TOOL_LABELS: Record<string, string> = {
   consultar_equipo: 'Consultando el equipo…',
   crear_tarea: 'Creando la tarea…',
   registrar_producto: 'Registrando el producto…',
+  datos_para_evaluar: 'Analizando el desempeño real…',
+  crear_evaluacion: 'Guardando la evaluación…',
+  consultar_evaluaciones: 'Consultando evaluaciones…',
+  estadisticas_equipo: 'Calculando estadísticas…',
 }
 
 /** Envía la conversación y consume el stream. Devuelve el texto completo del turno. */
