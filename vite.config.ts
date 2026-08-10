@@ -10,7 +10,7 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon-32.png', 'favicon-192.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'MyDELEGA',
         short_name: 'MyDELEGA',
@@ -33,10 +33,10 @@ export default defineConfig({
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'pwa-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'maskable',
           },
         ],
       },
