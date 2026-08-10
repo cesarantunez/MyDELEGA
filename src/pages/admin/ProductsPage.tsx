@@ -229,7 +229,7 @@ export default function ProductsPage() {
       <AnimatePresence>
         {showForm && (
           <motion.div
-            className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
