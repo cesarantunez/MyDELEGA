@@ -431,7 +431,32 @@ export async function executeTool(
         const orExpr = (cols: string[]) =>
           words.flatMap((w) => cols.map((c) => `${c}.ilike.%${w}%`)).join(',')
 
-        const [mods, docs] = await Promise.all([
+        // Semántico (RAG): embedding de la consulta → chunks de los archivos
+        const semantico = (async () => {
+          try {
+            const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+            const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+            if (!supabaseUrl || !serviceKey) return []
+            const resp = await fetch(`${supabaseUrl}/functions/v1/embed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+              body: JSON.stringify({ texts: [input.consulta] }),
+            })
+            const json = await resp.json() as { ok: boolean; embeddings?: number[][] }
+            if (!json.ok || !json.embeddings) return []
+            const { data } = await admin.rpc('match_document_chunks', {
+              p_business_id: caller.businessId,
+              p_query_embedding: JSON.stringify(json.embeddings[0]),
+              p_match_count: 5,
+            })
+            return ((data ?? []) as { title: string; area: string; content: string; similarity: number }[])
+              .filter((c) => c.similarity > 0.72)
+          } catch {
+            return []
+          }
+        })()
+
+        const [mods, docs, chunks] = await Promise.all([
           admin
             .from('training_modules')
             .select('title, area, content')
@@ -444,6 +469,7 @@ export async function executeTool(
             .eq('business_id', caller.businessId)
             .or(orExpr(['title', 'description']))
             .limit(5),
+          semantico,
         ])
 
         const modulos = (mods.data ?? []).map((m) => ({
@@ -452,18 +478,29 @@ export async function executeTool(
           area: m.area,
           contenido: trunc(m.content, 2500),
         }))
-        const documentos = (docs.data ?? []).map((d) => ({
-          tipo: 'documento',
-          titulo: d.title,
-          area: d.area,
-          descripcion: trunc(d.description, 300),
-          nota: 'Archivo adjunto: el usuario puede abrirlo en la pestaña Archivos de su área.',
+        const extractos = chunks.map((c) => ({
+          tipo: 'extracto_de_archivo',
+          titulo: c.title,
+          area: c.area,
+          contenido: trunc(c.content, 1500),
+          nota: 'Texto extraído de un archivo subido. Cítalo por el título del documento.',
         }))
+        const yaEnExtractos = new Set(chunks.map((c) => c.title))
+        const documentos = (docs.data ?? [])
+          .filter((d) => !yaEnExtractos.has(d.title))
+          .map((d) => ({
+            tipo: 'documento',
+            titulo: d.title,
+            area: d.area,
+            descripcion: trunc(d.description, 300),
+            nota: 'Archivo adjunto: el usuario puede abrirlo en la pestaña Archivos de su área.',
+          }))
 
-        if (modulos.length === 0 && documentos.length === 0) {
+        const total = modulos.length + extractos.length + documentos.length
+        if (total === 0) {
           return ok({ total: 0, resultados: [], nota: 'No hay material del negocio sobre esto. Decilo claramente antes de dar recomendaciones generales.' })
         }
-        return ok({ total: modulos.length + documentos.length, resultados: [...modulos, ...documentos] })
+        return ok({ total, resultados: [...modulos, ...extractos, ...documentos] })
       }
 
       case 'consultar_equipo': {

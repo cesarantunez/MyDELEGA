@@ -75,7 +75,31 @@ export async function uploadDocument(
     await supabase.storage.from('documents').remove([path])
     throw new Error(error.message)
   }
-  return (data as { id: string }).id
+  const documentId = (data as { id: string }).id
+
+  // Indexar para el RAG de DELI (best-effort: si falla, el documento
+  // igual queda subido; se puede reintentar re-subiendo o por backfill).
+  void indexDocumentForAgent(documentId)
+
+  return documentId
+}
+
+/** Manda el documento a extraccion de texto + embeddings (RAG de DELI). */
+export async function indexDocumentForAgent(documentId: string): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    await fetch('/api/document-ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ document_id: documentId }),
+    })
+  } catch {
+    // best-effort
+  }
 }
 
 export async function getDocumentUrl(storagePath: string): Promise<string | null> {
