@@ -110,10 +110,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, indexed: 0, skipped: true, reason: 'Sin texto extraible' })
     }
 
-    // 3. Embeddings via Edge Function (gte-small, lotes de 16)
+    // 3. Embeddings via Edge Function (gte-small). Lotes chicos: la función
+    // edge tiene límite de CPU por invocación (lotes grandes dan HTTP 546).
     const embeddings: number[][] = []
-    for (let i = 0; i < chunks.length; i += 16) {
-      const batch = chunks.slice(i, i + 16)
+    for (let i = 0; i < chunks.length; i += 4) {
+      const batch = chunks.slice(i, i + 4)
       const resp = await fetch(`${supabaseUrl}/functions/v1/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
