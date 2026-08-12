@@ -110,21 +110,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, indexed: 0, skipped: true, reason: 'Sin texto extraible' })
     }
 
-    // 3. Embeddings via Edge Function (gte-small). Lotes chicos: la función
-    // edge tiene límite de CPU por invocación (lotes grandes dan HTTP 546).
-    const embeddings: number[][] = []
-    for (let i = 0; i < chunks.length; i += 4) {
-      const batch = chunks.slice(i, i + 4)
-      const resp = await fetch(`${supabaseUrl}/functions/v1/embed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
-        body: JSON.stringify({ texts: batch }),
-      })
-      const json = await resp.json() as { ok: boolean; embeddings?: number[][]; error?: string }
-      if (!resp.ok || !json.ok || !json.embeddings) {
-        return res.status(500).json({ ok: false, error: { code: 'EMBED', message: json.error ?? `HTTP ${resp.status}` } })
+    // 3. Embeddings via Edge Function (gte-small). Lotes de 2 y reintentos:
+    // el worker edge tiene presupuesto de CPU acumulado — al agotarse
+    // responde 546 y el reintento cae en un worker fresco.
+    const embedBatch = async (batch: string[]): Promise<number[][]> => {
+      let lastError = ''
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 700 * attempt))
+        const resp = await fetch(`${supabaseUrl}/functions/v1/embed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ texts: batch }),
+        })
+        const json = await resp.json().catch(() => ({})) as { ok?: boolean; embeddings?: number[][]; error?: string }
+        if (resp.ok && json.ok && json.embeddings) return json.embeddings
+        lastError = json.error ?? `HTTP ${resp.status}`
       }
-      embeddings.push(...json.embeddings)
+      throw new Error(`embed: ${lastError}`)
+    }
+
+    const embeddings: number[][] = []
+    for (let i = 0; i < chunks.length; i += 2) {
+      embeddings.push(...await embedBatch(chunks.slice(i, i + 2)))
     }
 
     // 4. Reemplazar chunks del documento (idempotente)
